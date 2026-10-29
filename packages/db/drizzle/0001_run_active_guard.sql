@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "run_one_active_per_brand_uq" ON "run" USING btree ("brand_id") WHERE "run"."status" in ('queued', 'running');

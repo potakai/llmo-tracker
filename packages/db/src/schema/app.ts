@@ -162,6 +162,10 @@ export const run = pgTable(
     index('run_brand_id_created_at_idx').on(t.brandId, t.createdAt),
     // 同じ日の自動実行が二重に走らないようにする（手動は scheduledFor が null なので対象外）
     uniqueIndex('run_brand_id_scheduled_for_uq').on(t.brandId, t.scheduledFor),
+    // 1 ブランドで同時に動く run は 1 つまで（ボタン連打や自動・手動の重なりで二重に課金されない）
+    uniqueIndex('run_one_active_per_brand_uq')
+      .on(t.brandId)
+      .where(sql`${t.status} in ('queued', 'running')`),
     check(
       'run_scheduled_for_matches_trigger',
       sql`(${t.trigger} = 'scheduled') = (${t.scheduledFor} is not null)`,

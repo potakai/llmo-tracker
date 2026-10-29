@@ -16,7 +16,8 @@
     "db:migrate": "pnpm --filter @llmo/db migrate",
     "db:studio": "pnpm --filter @llmo/db studio",
     "auth:generate": "pnpm --filter web auth:generate",
-    "test": "pnpm --filter web test"
+    "test": "pnpm -r --workspace-concurrency=1 test",
+    "ask": "pnpm --filter @llmo/llm ask"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

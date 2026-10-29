@@ -8,7 +8,7 @@ import { brandParams, createBrandInput } from '../schemas/brand'
 import { validate } from '../validator'
 
 /** 組織の中のブランドを1件取る。他の組織のものなら 404 */
-async function findBrandInOrg(organizationId: string, brandId: string) {
+export async function findBrandInOrg(organizationId: string, brandId: string) {
   const found = await db.query.brand.findFirst({
     where: and(eq(brand.id, brandId), eq(brand.organizationId, organizationId)),
     with: {

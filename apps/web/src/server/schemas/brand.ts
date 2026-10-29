@@ -71,3 +71,7 @@ export type CreateBrandInput = z.infer<typeof createBrandInput>
 export const brandParams = z.object({
   brandId: z.uuid({ error: 'ブランドIDの形式が正しくありません' }),
 })
+
+export const runParams = brandParams.extend({
+  runId: z.uuid({ error: '実行IDの形式が正しくありません' }),
+})

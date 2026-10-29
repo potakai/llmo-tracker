@@ -1,0 +1,25 @@
+{
+  "name": "@llmo/runner",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@llmo/db": "workspace:*",
+    "@llmo/llm": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "p-limit": "7.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "dotenv": "18.0.9",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

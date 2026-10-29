@@ -1,4 +1,20 @@
-import { app } from '@/server/app'
+import { createFakeProvider } from '@llmo/llm'
+import { executeRun } from '@llmo/runner'
+import { db } from '@/lib/db'
+import { createApp } from '@/server/app'
+
+/** テストでは run をその場で実行して待つ（フェイクの AI を使う） */
+export const app = createApp({
+  dispatchRun: async (runId) => {
+    await executeRun(
+      {
+        db,
+        providers: { openai: createFakeProvider('openai'), gemini: createFakeProvider('gemini') },
+      },
+      runId,
+    )
+  },
+})
 
 const ORIGIN = 'http://localhost:3000'
 

@@ -1,0 +1,25 @@
+{
+  "name": "@llmo/llm",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "ask": "tsx --env-file-if-exists=../../.env src/cli/ask.ts",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "4.0.107",
+    "@ai-sdk/openai": "4.0.104",
+    "ai": "7.0.156"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
