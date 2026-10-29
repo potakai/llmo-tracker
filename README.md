@@ -11,18 +11,21 @@ ChatGPT や Gemini に毎日同じ質問を投げて、自社と競合が回答�
 | 言語          | TypeScript 7                                           |
 | 構成          | pnpm workspaces のモノレポ                             |
 | フロント      | Next.js 16（App Router）/ React 19                     |
-| API           | Hono（予定）                                           |
+| API           | Hono（Next.js の Route Handler 上で動かす）            |
 | DB            | PostgreSQL 18 + Drizzle ORM                            |
 | 認証          | Better Auth（organization プラグインでマルチテナント） |
 | LLM           | Vercel AI SDK（予定）                                  |
 | ジョブ        | Trigger.dev（予定）                                    |
 | Lint / Format | Biome                                                  |
+| テスト        | Vitest（実DBを使った結合テスト）                       |
 
 ## ディレクトリ構成
 
 ```
 apps/
   web/            Next.js アプリ（画面・API・認証）
+    src/server/   Hono の API（ルート、ミドルウェア、Zod スキーマ）
+    test/         結合テスト
 packages/
   db/             Drizzle のスキーマ、DBクライアント、マイグレーション
     src/schema/
@@ -35,12 +38,17 @@ packages/
 
 必要なもの：Node.js 22 以上、pnpm（`corepack enable` で入る）、Docker
 
+1. `.env` を作り、`BETTER_AUTH_SECRET` に `openssl rand -base64 32` の結果を入れる
+2. Docker Desktop を起動しておく
+3. 次を実行して http://localhost:3000 を開く
+
 ```bash
 pnpm install
-cp .env.example .env          # BETTER_AUTH_SECRET を埋める（openssl rand -base64 32）
-pnpm db:up                    # Postgres を起動
-pnpm db:migrate               # テーブルを作成
-pnpm dev                      # http://localhost:3000
+cp .env.example .env
+pnpm db:up
+pnpm db:migrate
+pnpm test
+pnpm dev
 ```
 
 ## よく使うコマンド
@@ -51,6 +59,7 @@ pnpm dev                      # http://localhost:3000
 | `pnpm db:migrate`           | マイグレーションを DB に適用する                          |
 | `pnpm db:studio`            | Drizzle Studio で DB の中身を見る                         |
 | `pnpm auth:generate`        | Better Auth の設定からテーブル定義（`auth.ts`）を作り直す |
+| `pnpm test`                 | 結合テスト（テスト用DBを作り直してから流す）              |
 | `pnpm typecheck`            | 全パッケージの型チェック                                  |
 | `pnpm lint` / `pnpm format` | Biome でチェック / 自動修正                               |
 
@@ -60,6 +69,7 @@ pnpm dev                      # http://localhost:3000
 - **リトライしても壊れない**：`response` は (run, prompt, provider, sample_index) で一意。自動実行の `run` は (brand, 日付) で一意。ジョブが再実行されても重複しない
 - **取得と分析を分ける**：生の回答（`response`）と解釈（`analysis` / `mention`）を別テーブルにして、抽出ロジックを直したら過去の回答を API を叩き直さずに再分析できる
 - **ルールは DB の制約でも守る**：サンプル数の範囲、成功時は本文必須、自動実行と日付の対応などを CHECK 制約にしている
+- **他の組織のデータは 404**：存在するかどうかも漏らさない。テナントの絞り込みを外すとテストが落ちることを確認済み
 - **id は UUIDv7**：時刻順に並ぶので、作成順の並び替えやインデックスと相性がいい
 
 ## 計測の限界

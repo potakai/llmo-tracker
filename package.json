@@ -15,7 +15,8 @@
     "db:generate": "pnpm --filter @llmo/db generate",
     "db:migrate": "pnpm --filter @llmo/db migrate",
     "db:studio": "pnpm --filter @llmo/db studio",
-    "auth:generate": "pnpm --filter web auth:generate"
+    "auth:generate": "pnpm --filter web auth:generate",
+    "test": "pnpm --filter web test"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
