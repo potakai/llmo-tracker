@@ -1,13 +1,21 @@
-import { createProvidersFromEnv, type Providers } from '@llmo/llm'
+import {
+  createExtractorFromEnv,
+  createProvidersFromEnv,
+  type Extractor,
+  type Providers,
+} from '@llmo/llm'
 import { executeRun } from '@llmo/runner'
 import { after } from 'next/server'
 import { db } from '@/lib/db'
 
-let providers: Providers | undefined
+let deps: { providers: Providers; extractor: Extractor } | undefined
 // 最初に使うときに作る（フェイクモードなら API キーがなくても起動できるように）
-const getProviders = () => {
-  providers ??= createProvidersFromEnv(process.env)
-  return providers
+const getDeps = () => {
+  deps ??= {
+    providers: createProvidersFromEnv(process.env),
+    extractor: createExtractorFromEnv(process.env),
+  }
+  return deps
 }
 
 /**
@@ -17,7 +25,7 @@ const getProviders = () => {
 export function dispatchInProcess(runId: string) {
   after(async () => {
     try {
-      const summary = await executeRun({ db, providers: getProviders() }, runId)
+      const summary = await executeRun({ db, ...getDeps() }, runId)
       console.info('[run]', summary)
     } catch (error) {
       console.error('[run] 失敗', runId, error)

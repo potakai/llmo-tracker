@@ -1,9 +1,11 @@
 import { brand, competitor, prompt } from '@llmo/db'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
+import { getBrandMetrics } from '../queries/metrics'
 import { brandParams, createBrandInput } from '../schemas/brand'
 import { validate } from '../validator'
 
@@ -75,3 +77,16 @@ export const brandRoutes = new Hono<OrgEnv>()
     const { brandId } = c.req.valid('param')
     return c.json({ brand: await findBrandInOrg(c.var.organizationId, brandId) })
   })
+
+  // ダッシュボードの数字（言及率の推移・シェア・引用ドメイン）
+  .get(
+    '/:brandId/metrics',
+    validate('param', brandParams),
+    validate('query', z.object({ days: z.coerce.number().int().min(7).max(90).default(30) })),
+    async (c) => {
+      const { brandId } = c.req.valid('param')
+      const { days } = c.req.valid('query')
+      await findBrandInOrg(c.var.organizationId, brandId)
+      return c.json({ metrics: await getBrandMetrics(brandId, { days }) })
+    },
+  )

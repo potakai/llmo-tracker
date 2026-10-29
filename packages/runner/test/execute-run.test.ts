@@ -3,7 +3,7 @@ import { createFakeProvider } from '@llmo/llm'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { createManualRun, createScheduledRun, executeRun, RunAlreadyActiveError } from '../src'
-import { countingProviders, db, seedBrand } from './fixtures'
+import { countingProviders, db, extractor, seedBrand } from './fixtures'
 
 describe('executeRun', () => {
   it('質問 × AI × サンプル数 の分だけ聞いて、回答と引用元を保存する', async () => {
@@ -11,7 +11,7 @@ describe('executeRun', () => {
     const created = await createManualRun(db, brand.id)
     const { providers, calls } = countingProviders()
 
-    const summary = await executeRun({ db, providers }, created.id)
+    const summary = await executeRun({ db, providers, extractor }, created.id)
 
     // 2 質問 × 2 AI × 3 回 = 12
     expect(summary).toMatchObject({ status: 'succeeded', total: 12, succeeded: 12, failed: 0 })
@@ -38,7 +38,7 @@ describe('executeRun', () => {
       gemini: createFakeProvider('gemini', { failWhen: (i) => i.prompt === '壊れる質問' }),
     })
 
-    const summary = await executeRun({ db, providers }, created.id)
+    const summary = await executeRun({ db, providers, extractor }, created.id)
 
     expect(summary).toMatchObject({ status: 'partial', total: 8, succeeded: 6, failed: 2 })
     const failed = await db.select().from(response).where(eq(response.status, 'failed'))
@@ -53,12 +53,12 @@ describe('executeRun', () => {
     const first = countingProviders({
       gemini: createFakeProvider('gemini', { failWhen: () => true }),
     })
-    await executeRun({ db, providers: first.providers }, created.id)
+    await executeRun({ db, providers: first.providers, extractor }, created.id)
     await db.update(run).set({ status: 'running' }).where(eq(run.id, created.id))
 
     // 2 回目：成功済みの openai は聞かず、失敗していた gemini だけ聞き直す
     const second = countingProviders()
-    const summary = await executeRun({ db, providers: second.providers }, created.id)
+    const summary = await executeRun({ db, providers: second.providers, extractor }, created.id)
 
     expect(second.calls).toEqual({ openai: 0, gemini: 5 })
     expect(summary).toMatchObject({ status: 'succeeded', total: 10, succeeded: 10 })
@@ -67,10 +67,10 @@ describe('executeRun', () => {
   it('終わっている run をもう一度渡しても、AI には聞かない', async () => {
     const { brand } = await seedBrand({ samplesPerPrompt: 1 })
     const created = await createManualRun(db, brand.id)
-    await executeRun({ db, providers: countingProviders().providers }, created.id)
+    await executeRun({ db, providers: countingProviders().providers, extractor }, created.id)
 
     const again = countingProviders()
-    const summary = await executeRun({ db, providers: again.providers }, created.id)
+    const summary = await executeRun({ db, providers: again.providers, extractor }, created.id)
     expect(again.calls).toEqual({ openai: 0, gemini: 0 })
     expect(summary.status).toBe('succeeded')
   })
@@ -83,7 +83,7 @@ describe('run の作成', () => {
     await expect(createManualRun(db, brand.id)).rejects.toBeInstanceOf(RunAlreadyActiveError)
 
     // 終わったらまた作れる
-    await executeRun({ db, providers: countingProviders().providers }, first.id)
+    await executeRun({ db, providers: countingProviders().providers, extractor }, first.id)
     await expect(createManualRun(db, brand.id)).resolves.toBeTruthy()
   })
 
@@ -91,7 +91,7 @@ describe('run の作成', () => {
     const { brand } = await seedBrand({ samplesPerPrompt: 1 })
     const first = await createScheduledRun(db, brand.id, '2026-10-29')
     expect(first).not.toBeNull()
-    await executeRun({ db, providers: countingProviders().providers }, first!.id)
+    await executeRun({ db, providers: countingProviders().providers, extractor }, first!.id)
 
     expect(await createScheduledRun(db, brand.id, '2026-10-29')).toBeNull()
     expect(await createScheduledRun(db, brand.id, '2026-10-30')).not.toBeNull()

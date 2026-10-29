@@ -6,9 +6,16 @@ import {
   response,
   run as runTable,
 } from '@llmo/db'
-import { type AskResult, estimateCostUsd, type ProviderId, type Providers } from '@llmo/llm'
+import {
+  type AskResult,
+  type Extractor,
+  estimateCostUsd,
+  type ProviderId,
+  type Providers,
+} from '@llmo/llm'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import pLimit from 'p-limit'
+import { analyzeRun } from './analyze'
 
 // DB の provider enum と LLM 側の ProviderId がずれたらここで型エラーになる
 const _providerIdsMatch: [Provider] extends [ProviderId]
@@ -21,6 +28,8 @@ void _providerIdsMatch
 export type ExecuteRunDeps = {
   db: Db
   providers: Providers
+  /** 回答から言及を取り出す（LLM またはルールベース） */
+  extractor: Extractor
   /** 同時に投げる質問の数（API のレート制限に合わせて調整） */
   concurrency?: number
   /** 1 回の質問のタイムアウト */
@@ -114,6 +123,9 @@ export async function executeRun(deps: ExecuteRunDeps, runId: string): Promise<R
       }),
     ),
   )
+
+  // 回答がそろってから、まとめて分析する（分析だけ失敗しても回答は残る。あとから再分析できる）
+  await analyzeRun({ db, extractor: deps.extractor, concurrency: deps.concurrency }, runId)
 
   const summary = await summarize(db, runId)
   await db

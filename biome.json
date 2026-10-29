@@ -34,7 +34,7 @@
   },
   "overrides": [
     {
-      "includes": ["**/test/**"],
+      "includes": ["**/test/**", "**/scripts/**", "**/e2e/**"],
       "linter": {
         "rules": {
           "style": {
@@ -43,5 +43,10 @@
         }
       }
     }
-  ]
+  ],
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  }
 }

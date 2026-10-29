@@ -1,3 +1,7 @@
+import '@fontsource/zen-kaku-gothic-new/400.css'
+import '@fontsource/zen-kaku-gothic-new/500.css'
+import '@fontsource/zen-kaku-gothic-new/700.css'
+import './globals.css'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 
@@ -9,7 +13,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ja">
-      <body>{children}</body>
+      <body className="min-h-dvh antialiased">{children}</body>
     </html>
   )
 }

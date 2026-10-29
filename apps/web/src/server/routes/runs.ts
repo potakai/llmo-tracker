@@ -1,11 +1,10 @@
-import { citation, response, run } from '@llmo/db'
 import { createManualRun, RunAlreadyActiveError } from '@llmo/runner'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { AppDeps } from '../app'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
+import { getRunDetail, listRuns } from '../queries/runs'
 import { brandParams, runParams } from '../schemas/brand'
 import { validate } from '../validator'
 import { findBrandInOrg } from './brands'
@@ -34,43 +33,14 @@ export const createRunRoutes = (deps: AppDeps) =>
     .get('/:brandId/runs', validate('param', brandParams), async (c) => {
       const { brandId } = c.req.valid('param')
       await findBrandInOrg(c.var.organizationId, brandId)
-
-      const runs = await db
-        .select({
-          id: run.id,
-          trigger: run.trigger,
-          status: run.status,
-          scheduledFor: run.scheduledFor,
-          startedAt: run.startedAt,
-          finishedAt: run.finishedAt,
-          totalCostUsd: run.totalCostUsd,
-          createdAt: run.createdAt,
-          succeeded: sql<number>`count(${response.id}) filter (where ${response.status} = 'succeeded')::int`,
-          failed: sql<number>`count(${response.id}) filter (where ${response.status} = 'failed')::int`,
-        })
-        .from(run)
-        .leftJoin(response, eq(response.runId, run.id))
-        .where(eq(run.brandId, brandId))
-        .groupBy(run.id)
-        .orderBy(desc(run.createdAt))
-        .limit(20)
-      return c.json({ runs })
+      return c.json({ runs: await listRuns(brandId) })
     })
 
-    // 実行の詳細（回答と引用元つき）
+    // 実行の詳細（回答・引用元・分析結果つき）
     .get('/:brandId/runs/:runId', validate('param', runParams), async (c) => {
       const { brandId, runId } = c.req.valid('param')
       await findBrandInOrg(c.var.organizationId, brandId)
-
-      const found = await db.query.run.findFirst({
-        where: and(eq(run.id, runId), eq(run.brandId, brandId)),
-        with: {
-          responses: {
-            orderBy: [asc(response.promptId), asc(response.provider), asc(response.sampleIndex)],
-            with: { citations: { orderBy: asc(citation.position) } },
-          },
-        },
-      })
+      const found = await getRunDetail(brandId, runId)
       if (!found) throw errors.notFound('実行')
       return c.json({ run: found })
     })

@@ -1,9 +1,15 @@
 import { brand, competitor, createDb, organization, prompt } from '@llmo/db'
-import { type AnswerProvider, createFakeProvider, type Providers } from '@llmo/llm'
+import {
+  type AnswerProvider,
+  createFakeProvider,
+  createRuleBasedExtractor,
+  type Providers,
+} from '@llmo/llm'
 
 const url = process.env.TEST_DATABASE_URL
 if (!url) throw new Error('TEST_DATABASE_URL が設定されていません')
 export const db = createDb(url)
+export const extractor = createRuleBasedExtractor()
 
 /** 組織・ブランド・競合・質問をまとめて作る */
 export async function seedBrand(options: { prompts?: string[]; samplesPerPrompt?: number } = {}) {

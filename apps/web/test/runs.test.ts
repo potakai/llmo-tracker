@@ -57,3 +57,30 @@ describe('手動実行', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('ダッシュボードの数字', () => {
+  it('実行したあとは、今日の言及率と競合とのシェアが出る', async () => {
+    const { client, brandId } = await setupBrand(3)
+    await client.post(`/api/brands/${brandId}/runs`, {})
+
+    const res = await client.get(`/api/brands/${brandId}/metrics?days=7`)
+    expect(res.status).toBe(200)
+    const { metrics } = res.json
+    expect(metrics.trend.all).toHaveLength(7)
+    // 2 質問 × 2 AI × 3 回 = 12 件の回答が、今日の点に入る
+    expect(metrics.latest.n).toBe(12)
+    expect(metrics.latest.rate).toBeGreaterThanOrEqual(0)
+    expect(metrics.latest.low).toBeLessThanOrEqual(metrics.latest.rate)
+    expect(metrics.latest.high).toBeGreaterThanOrEqual(metrics.latest.rate)
+
+    const names = metrics.shareOfVoice.map((e: { name: string }) => e.name)
+    expect(names).toContain('◯◯会計')
+    expect(metrics.topDomains.length).toBeGreaterThan(0)
+  })
+
+  it('日数の指定が範囲外なら 400', async () => {
+    const { client, brandId } = await setupBrand(1)
+    const res = await client.get(`/api/brands/${brandId}/metrics?days=365`)
+    expect(res.status).toBe(400)
+  })
+})

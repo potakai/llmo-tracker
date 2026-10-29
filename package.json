@@ -17,7 +17,9 @@
     "db:studio": "pnpm --filter @llmo/db studio",
     "auth:generate": "pnpm --filter web auth:generate",
     "test": "pnpm -r --workspace-concurrency=1 test",
-    "ask": "pnpm --filter @llmo/llm ask"
+    "ask": "pnpm --filter @llmo/llm ask",
+    "db:seed": "pnpm --filter web db:seed",
+    "test:e2e": "pnpm --filter web test:e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

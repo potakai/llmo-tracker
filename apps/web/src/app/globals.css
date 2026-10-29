@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/*
+ * 色：「観測の道具」のイメージ。紙のような青白い地に、藍色の文字。
+ * 系列の色は AI ごとに固定し、マーカー黄色は「自社の言及」にだけ使う。
+ */
+@theme {
+  --color-paper: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-ink: #1f2a44;
+  --color-ink-soft: #5a6580;
+  --color-rule: #dce3ee;
+  --color-openai: #2f7d6b;
+  --color-gemini: #6b5bd6;
+  --color-own: #f6c955;
+  --color-own-soft: #fdf1c7;
+  --color-rival-soft: #dcebfa;
+  --color-danger: #b3413a;
+
+  --font-sans: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --radius-box: 6px;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-feature-settings: "palt";
+  }
+  body {
+    font-family: var(--font-sans);
+    line-height: 1.75;
+  }
+  /* 日本語の見出しを文節の切れ目で折り返す（「きま／した」のような途中の改行を防ぐ） */
+  h1,
+  h2,
+  .phrase {
+    word-break: auto-phrase;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gemini);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: 動きを減らす設定は、どの指定よりも優先させる */
+      transition: none !important;
+      /* biome-ignore lint/complexity/noImportantStyles: 同上 */
+      animation: none !important;
+    }
+  }
+}
+
+@utility num {
+  font-variant-numeric: tabular-nums;
+}
+@utility field {
+  @apply w-full rounded-[var(--radius-box)] border border-rule bg-surface px-3 py-2 text-ink outline-none focus:border-gemini;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] px-4 py-2 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-ink text-white hover:bg-ink/85;
+}
+@utility btn-quiet {
+  @apply btn border border-rule bg-surface text-ink hover:border-ink-soft;
+}
+@utility panel {
+  @apply rounded-[var(--radius-box)] border border-rule bg-surface;
+}

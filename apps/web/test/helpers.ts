@@ -1,4 +1,4 @@
-import { createFakeProvider } from '@llmo/llm'
+import { createFakeProvider, createRuleBasedExtractor } from '@llmo/llm'
 import { executeRun } from '@llmo/runner'
 import { db } from '@/lib/db'
 import { createApp } from '@/server/app'
@@ -10,6 +10,7 @@ export const app = createApp({
       {
         db,
         providers: { openai: createFakeProvider('openai'), gemini: createFakeProvider('gemini') },
+        extractor: createRuleBasedExtractor(),
       },
       runId,
     )
