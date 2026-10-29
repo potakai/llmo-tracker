@@ -1,0 +1,26 @@
+{
+  "name": "web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc",
+    "auth:generate": "auth generate --adapter drizzle --dialect pg --config src/lib/auth.ts --output ../../packages/db/src/schema/auth.ts --yes"
+  },
+  "dependencies": {
+    "@llmo/db": "workspace:*",
+    "better-auth": "1.7.14",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "auth": "1.7.14",
+    "typescript": "7.0.2"
+  }
+}

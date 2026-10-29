@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# インストール時にスクリプト実行を許可するパッケージ（drizzle-kit / tsx が使う esbuild）
+onlyBuiltDependencies:
+  - esbuild
