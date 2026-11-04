@@ -9,7 +9,8 @@ ChatGPT / Gemini に登録した質問を毎日投げ、回答の中で自社と
 - `apps/web`：Next.js 16（App Router）。API は Hono を Route Handler に載せている（`src/server/`）。認証は Better Auth
 - `packages/db`：Drizzle のスキーマ・マイグレーション
 - `packages/llm`：AI の呼び出し（OpenAI / Gemini / フェイク）と、回答からの言及の抽出
-- `packages/runner`：実行（run）の作成と処理
+- `packages/runner`：実行（run）の作成と処理、毎日の run の作成、止まった run の回収
+- `apps/jobs`：Trigger.dev のタスク。中身は `packages/runner` を呼ぶだけにして、ロジックとテストは runner に置く
 
 ## コマンド
 
@@ -33,7 +34,9 @@ pnpm test:e2e       # Playwright
 - `packages/db/src/schema/auth.ts` は Better Auth の生成物。手で編集せず `pnpm auth:generate` で作り直す
 - **本物の AI API は叩かない**。開発・テストは `LLM_MODE=fake`。`LLM_MODE=live` や `pnpm ask` は費用がかかるので、人に頼まれたときだけ
 - 質問（prompt）の文面は書き換えない設計。変えたいときはアーカイブして新しく追加する
-- 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` と CI にも足す
+- 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` と CI にも足す。Trigger.dev のタスクが使う変数は、Trigger.dev のダッシュボードにも設定が必要
+- Web（`apps/web`）から `jobs` を読み込むときは、タスクの型（`import type`）と `src/keys.ts` だけにする。タスク本体を読み込むと DB・AI のコードが Next.js に入る
+- `pnpm jobs:deploy` は本番に出るので、人に頼まれたときだけ
 - エラーは `src/server/errors.ts` の `errors` から投げ、フロントは `code` で分岐する
 - バグを直すときは、先に落ちるテストを書く
 

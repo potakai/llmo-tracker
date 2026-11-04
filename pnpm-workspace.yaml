@@ -2,6 +2,8 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# インストール時にスクリプト実行を許可するパッケージ（drizzle-kit / tsx が使う esbuild）
+# インストール時にスクリプト実行を許可するパッケージ
+# esbuild：drizzle-kit / tsx / Trigger.dev が使う。@depot/cli：Trigger.dev のデプロイでイメージを作る
 onlyBuiltDependencies:
+  - "@depot/cli"
   - esbuild

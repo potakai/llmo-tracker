@@ -7,7 +7,7 @@ config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: tru
 
 const nextConfig: NextConfig = {
   // workspace の TS パッケージをそのままビルドに含める
-  transpilePackages: ['@llmo/db', '@llmo/llm', '@llmo/runner'],
+  transpilePackages: ['@llmo/db', '@llmo/llm', '@llmo/runner', 'jobs'],
   // typedRoutes は TypeScript 7 で Next が生成する型と噛み合わないため、いったん無効（README の既知の課題を参照）
 }
 

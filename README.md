@@ -17,7 +17,7 @@ ChatGPT や Gemini に毎日同じ質問を投げて、自社と競合が回答�
 | DB            | PostgreSQL 18 + Drizzle ORM                                 |
 | 認証          | Better Auth（organization プラグインでマルチテナント）      |
 | LLM           | Vercel AI SDK（OpenAI の Web 検索 / Gemini の Google 検索） |
-| ジョブ        | Trigger.dev（予定）                                         |
+| ジョブ        | Trigger.dev（毎日の自動実行、リトライ、止まった実行の回収） |
 | 画面          | Tailwind CSS 4 / Recharts                                   |
 | Lint / Format | Biome                                                       |
 | テスト        | Vitest（実DBを使った結合テスト）/ Playwright（E2E）         |
@@ -29,9 +29,10 @@ apps/
   web/            Next.js アプリ（画面・API・認証）
     src/server/   Hono の API（ルート、ミドルウェア、Zod スキーマ）
     test/         結合テスト
+  jobs/           Trigger.dev のタスク（毎日の自動実行、run の実行、止まった run の回収）
 packages/
   llm/            AI ごとの呼び出し（OpenAI / Gemini / フェイク）、回答の抽出、料金の計算
-  runner/         実行バッチ（run）の処理：AI に聞いて回答と引用元を保存し、言及を抽出する
+  runner/         実行バッチ（run）の処理：AI に聞いて回答と引用元を保存し、言及を抽出する。毎日の run の作成と、止まった run の回収も
   db/             Drizzle のスキーマ、DBクライアント、マイグレーション
     src/schema/
       app.ts      アプリのテーブル（brand, prompt, run, response など）
@@ -61,18 +62,19 @@ pnpm dev
 
 ## よく使うコマンド
 
-| コマンド                           | 内容                                                                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `pnpm db:generate`                 | スキーマの変更から SQL マイグレーションを作る                                                                          |
-| `pnpm db:migrate`                  | マイグレーションを DB に適用する                                                                                       |
-| `pnpm db:studio`                   | Drizzle Studio で DB の中身を見る                                                                                      |
-| `pnpm auth:generate`               | Better Auth の設定からテーブル定義（`auth.ts`）を作り直す                                                              |
-| `pnpm ask "質問" [openai\|gemini]` | 本物の API に 1 回だけ聞いて、回答・引用元・費用を表示（API キーの確認用）                                             |
-| `pnpm db:seed`                     | デモアカウントと 30 日分のサンプルデータを作る（何度実行しても作り直すだけ）                                           |
-| `pnpm test`                        | 結合テスト（テスト用DBを作り直してから流す）                                                                           |
-| `pnpm test:e2e`                    | ブラウザで画面を通しで確かめる（`pnpm dev` を自動で起動。初回は `pnpm --filter web exec playwright install chromium`） |
-| `pnpm typecheck`                   | 全パッケージの型チェック                                                                                               |
-| `pnpm lint` / `pnpm format`        | Biome でチェック / 自動修正                                                                                            |
+| コマンド                             | 内容                                                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `pnpm db:generate`                   | スキーマの変更から SQL マイグレーションを作る                                                                          |
+| `pnpm db:migrate`                    | マイグレーションを DB に適用する                                                                                       |
+| `pnpm db:studio`                     | Drizzle Studio で DB の中身を見る                                                                                      |
+| `pnpm auth:generate`                 | Better Auth の設定からテーブル定義（`auth.ts`）を作り直す                                                              |
+| `pnpm ask "質問" [openai\|gemini]`   | 本物の API に 1 回だけ聞いて、回答・引用元・費用を表示（API キーの確認用）                                             |
+| `pnpm db:seed`                       | デモアカウントと 30 日分のサンプルデータを作る（何度実行しても作り直すだけ）                                           |
+| `pnpm test`                          | 結合テスト（テスト用DBを作り直してから流す）                                                                           |
+| `pnpm test:e2e`                      | ブラウザで画面を通しで確かめる（`pnpm dev` を自動で起動。初回は `pnpm --filter web exec playwright install chromium`） |
+| `pnpm typecheck`                     | 全パッケージの型チェック                                                                                               |
+| `pnpm jobs:dev` / `pnpm jobs:deploy` | Trigger.dev のタスクを開発環境につなぐ / 本番にデプロイする（`.env` に `TRIGGER_SECRET_KEY` が必要）                   |
+| `pnpm lint` / `pnpm format`          | Biome でチェック / 自動修正                                                                                            |
 
 ## 設計判断
 
@@ -83,7 +85,9 @@ pnpm dev
 - **他の組織のデータは 404**：存在するかどうかも漏らさない。テナントの絞り込みを外すとテストが落ちることを確認済み
 - **AI は差し替えられる**：OpenAI・Gemini・フェイクが同じインターフェース（`AnswerProvider`）を実装している。AI を足すときは 1 ファイル足すだけ。開発・テスト・公開デモはフェイクで動くので費用がかからない（`LLM_MODE=live` のときだけ本物を叩く）
 - **実行は途中から再開できる**：成功済みの回答は聞き直さず、失敗した分だけ聞き直す。1 ブランドで同時に動く実行は 1 つまで（DB の部分ユニークインデックスで保証）
-- **ジョブの投げ先は注入する**：開発はリクエストのあとに同じプロセスで実行、テストはその場で実行、本番は Trigger.dev（予定）
+- **ジョブの投げ先は注入する**：開発はリクエストのあとに同じプロセスで実行、テストはその場で実行、本番は Trigger.dev（`RUN_DISPATCH=trigger`）。Web からはタスクの型だけを読み込むので、DB や AI のコードが Next.js 側に入らない
+- **毎日の自動実行は「作る」と「渡す」を分ける**：毎朝 6 時（日本時間）に、ブランドごとにその日の run を作り（DB の一意制約で 1 日 1 つ）、まだ `queued` の run をすべてジョブに渡す。run を作ったあとジョブに渡す前に落ちても、リトライで拾い直せる。同じ run を二重に渡しても、Trigger.dev の idempotency key で 1 回しか動かない。デモ組織は対象外
+- **止まった run は回収する**：10 分ごとに、30 分なにも進んでいない（作成・開始・回答の保存・分析のどれも更新がない）`queued` / `running` の run を終わらせる。成功した回答があれば `partial`、なければ `failed`。判定と更新を 1 つの UPDATE で行うので、回収の直前に進んだ run を誤って終わらせない。ジョブがリトライを使い切ったときと、ジョブに渡せなかったときは、30 分待たずにその場で終わらせる
 - **抽出は「LLM ＋ 名前のマッチング」の二段構え**：LLM が回答から会社名を登場順に抜き出し（Zod のスキーマで形を検証）、登録済みの名前・別名と突き合わせて自社・競合・未登録に振り分ける。LLM が拾い漏らした登録済みの名前は文字列マッチで補う。LLM が失敗したり形の違う JSON を返したりしたら、ルールベースにフォールバックする
 - **言及率は幅で見せる**：日ごとの回答数は少ないので、直近 7 日分をまとめた割合と、Wilson の 95% 信頼区間を表示する（n が小さくても 0〜100% からはみ出さない）
 - **デモは閲覧専用**：デモ組織（`organization.metadata` に目印）では、`/api/brands` 以下の GET 以外と、Better Auth の組織作成・パスワード変更などをすべて 403 にする。公開デモで誰かが計測を押して課金が発生することがない。画面でもボタンを無効にして理由を出す
@@ -100,5 +104,5 @@ pnpm dev
 
 ## 既知の課題
 
-- [ ] **開発用の実行方式では、止まった実行が残る**：今は run をリクエストのあとに同じプロセスで実行している（`dispatchInProcess`）。実行中にサーバーが落ちると、run が `queued` / `running` のまま残り、「1 ブランドで同時に動く実行は 1 つまで」の制約によってそのブランドが実行できなくなる。本番用に Trigger.dev へ移すときに、リトライと「一定時間動いていない run の回収」をまとめて入れる
+- [x] **止まった実行が残る**：実行中にサーバーが落ちると run が `queued` / `running` のまま残り、そのブランドが実行できなくなっていた。Trigger.dev に移し、リトライ・失敗時の後始末・10 分ごとの回収を入れた。開発用の実行方式（`RUN_DISPATCH` 未設定）では回収のタスクが動かないので、手元で止まった run は `pnpm jobs:dev` から `recover-stale-runs` を起動するか、DB を直接直す
 - [ ] **Next.js の typedRoutes を無効にしている**：TypeScript 7 だと、Next.js 16 が生成するルートの型（`RouteImpl`）で正しいパスまでエラーになる（TypeScript 6 では通ることを確認済み）。Next.js か TypeScript 側で直ったら `next.config.ts` で有効に戻す
