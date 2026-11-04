@@ -81,6 +81,7 @@ describe('ダッシュボードの数字', () => {
   it('日数の指定が範囲外なら 400', async () => {
     const { client, brandId } = await setupBrand(1)
     const res = await client.get(`/api/brands/${brandId}/metrics?days=365`)
+    expect(res.json.error.code).toBe('VALIDATION_ERROR')
     expect(res.status).toBe(400)
   })
 })

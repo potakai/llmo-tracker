@@ -35,6 +35,15 @@ export const errors = {
       'このブランドはすでに実行中です。終わるまで待ってください',
     ),
   noPrompts: () => new AppError(400, 'NO_PROMPTS', '有効な質問が1つもありません'),
+  demoReadOnly: () =>
+    new AppError(403, 'DEMO_READ_ONLY', 'デモアカウントは閲覧専用です。計測や編集はできません'),
+  promptLimit: (max: number) =>
+    new AppError(
+      400,
+      'PROMPT_LIMIT',
+      `有効な質問は${max}個までです。使わない質問をアーカイブしてください`,
+    ),
+  duplicate: (what: string) => new AppError(409, 'DUPLICATE', `同じ${what}がすでにあります`),
 }
 
 export function handleError(err: Error, c: Context) {

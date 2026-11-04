@@ -10,6 +10,9 @@ function describeError(mode: 'login' | 'signup', error: { status?: number; messa
   if (error.status !== undefined && error.status >= 500) {
     return 'サーバーでエラーが起きました。少し待ってからもう一度試してください'
   }
+  if (error.status === 403) {
+    return 'ログインを受け付けられませんでした。開いている URL が、サーバーの設定（BETTER_AUTH_URL）と合っているか確かめてください'
+  }
   if (mode === 'login') return 'メールアドレスかパスワードが違います'
   if (error.status === 422) return 'このメールアドレスはすでに登録されています'
   return error.message ?? '登録できませんでした。入力内容を確かめてください'

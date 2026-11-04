@@ -4,7 +4,7 @@
  * 何度実行しても、デモ組織のブランドを作り直すだけ（他のデータには触らない）。
  * 会社名とドメインはすべて架空（.example）。
  */
-import { brand, competitor, member, organization, prompt, user } from '@llmo/db'
+import { brand, competitor, member, organization, prompt, run, user } from '@llmo/db'
 import { type AnswerProvider, createRuleBasedExtractor, type ProviderId } from '@llmo/llm'
 import { createScheduledRun, executeRun } from '@llmo/runner'
 import { eq } from 'drizzle-orm'
@@ -12,6 +12,7 @@ import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { DEMO_ACCOUNT } from '@/lib/demo'
 import { addDays, todayInTokyo } from '@/lib/stats'
+import { DEMO_METADATA } from '@/server/demo'
 
 const DAYS = 30
 const BRAND = 'サンプル会計'
@@ -135,15 +136,42 @@ async function main() {
       .returning()
   }
   const organizationId = membership!.organizationId
+  // デモ組織の目印（閲覧専用にするため）。既存の組織にも付け直す
+  await db
+    .update(organization)
+    .set({ metadata: DEMO_METADATA })
+    .where(eq(organization.id, organizationId))
 
-  // 3. ブランドを作り直す（run や回答は cascade で消える）
-  await db.delete(brand).where(eq(brand.organizationId, organizationId))
-  const [b] = await db
-    .insert(brand)
-    .values({ organizationId, name: BRAND, domain: 'sample-kaikei.example', samplesPerPrompt: 5 })
-    .returning()
-  await db.insert(competitor).values(COMPETITORS.map((name) => ({ brandId: b!.id, name })))
-  await db.insert(prompt).values(PROMPTS.map((text) => ({ brandId: b!.id, text })))
+  // 3. ブランドの中身を作り直す。ブランドの行は残して ID（＝ URL）を変えない
+  //    （作り直すたびに URL が変わると、開いていたタブが 404 になるため）
+  const existing = await db.select().from(brand).where(eq(brand.organizationId, organizationId))
+  const [keep, ...extra] = existing
+  for (const old of extra) await db.delete(brand).where(eq(brand.id, old.id))
+  const values = {
+    name: BRAND,
+    aliases: [],
+    domain: 'sample-kaikei.example',
+    samplesPerPrompt: 5,
+    providers: ['openai', 'gemini'] as ('openai' | 'gemini')[],
+    scheduleEnabled: true,
+  }
+  let b: typeof brand.$inferSelect
+  if (keep) {
+    // run・回答・質問・競合は消してから入れ直す（回答などは cascade で消える）
+    await db.delete(run).where(eq(run.brandId, keep.id))
+    await db.delete(prompt).where(eq(prompt.brandId, keep.id))
+    await db.delete(competitor).where(eq(competitor.brandId, keep.id))
+    ;[b] = (await db.update(brand).set(values).where(eq(brand.id, keep.id)).returning()) as [
+      typeof brand.$inferSelect,
+    ]
+  } else {
+    ;[b] = (await db
+      .insert(brand)
+      .values({ organizationId, ...values })
+      .returning()) as [typeof brand.$inferSelect]
+  }
+  await db.insert(competitor).values(COMPETITORS.map((name) => ({ brandId: b.id, name })))
+  await db.insert(prompt).values(PROMPTS.map((text) => ({ brandId: b.id, text })))
 
   // 4. 30 日分の自動計測
   const state = { day: 0 }
@@ -153,7 +181,7 @@ async function main() {
   for (let day = 0; day < DAYS; day++) {
     state.day = day
     const date = addDays(today, day - (DAYS - 1))
-    const created = await createScheduledRun(db, b!.id, date)
+    const created = await createScheduledRun(db, b.id, date)
     if (!created) continue
     await executeRun({ db, providers, extractor, concurrency: 8 }, created.id)
     process.stdout.write(`\r計測中… ${day + 1}/${DAYS} 日`)

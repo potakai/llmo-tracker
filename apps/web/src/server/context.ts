@@ -22,5 +22,7 @@ export type AuthedEnv = {
 export type OrgEnv = {
   Variables: AuthedEnv['Variables'] & {
     organizationId: string
+    /** デモ組織なら true（閲覧専用） */
+    isDemo: boolean
   }
 }

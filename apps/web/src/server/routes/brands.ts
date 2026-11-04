@@ -1,12 +1,11 @@
 import { brand, competitor, prompt } from '@llmo/db'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { z } from 'zod'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
 import { getBrandMetrics } from '../queries/metrics'
-import { brandParams, createBrandInput } from '../schemas/brand'
+import { brandParams, createBrandInput, metricsQuery } from '../schemas/brand'
 import { validate } from '../validator'
 
 /** 組織の中のブランドを1件取る。他の組織のものなら 404 */
@@ -78,15 +77,17 @@ export const brandRoutes = new Hono<OrgEnv>()
     return c.json({ brand: await findBrandInOrg(c.var.organizationId, brandId) })
   })
 
-  // ダッシュボードの数字（言及率の推移・シェア・引用ドメイン）
+  // ダッシュボードの数字（言及率の推移・シェア・引用ドメイン・質問ごと）。期間・AI・質問で絞り込める
   .get(
     '/:brandId/metrics',
     validate('param', brandParams),
-    validate('query', z.object({ days: z.coerce.number().int().min(7).max(90).default(30) })),
+    validate('query', metricsQuery),
     async (c) => {
       const { brandId } = c.req.valid('param')
-      const { days } = c.req.valid('query')
+      const { days, ai, q } = c.req.valid('query')
       await findBrandInOrg(c.var.organizationId, brandId)
-      return c.json({ metrics: await getBrandMetrics(brandId, { days }) })
+      return c.json({
+        metrics: await getBrandMetrics(brandId, { days, provider: ai, promptId: q }),
+      })
     },
   )

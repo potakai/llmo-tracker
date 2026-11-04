@@ -75,3 +75,46 @@ export const brandParams = z.object({
 export const runParams = brandParams.extend({
   runId: z.uuid({ error: '実行IDの形式が正しくありません' }),
 })
+
+/** ブランド情報の更新。送った項目だけ変える */
+export const updateBrandInput = z
+  .object({
+    name: nameSchema,
+    aliases: z.array(nameSchema).max(10),
+    domain: domainSchema.nullable(),
+    samplesPerPrompt: z.int().min(1).max(10),
+    providers: z
+      .array(z.enum(PROVIDERS))
+      .min(1, { error: '対象のAIを1つ以上選んでください' })
+      .refine(hasNoDuplicates, { error: '対象のAIが重複しています' }),
+    scheduleEnabled: z.boolean(),
+  })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, { error: '変更する項目がありません' })
+
+export const updateCompetitorInput = competitorInput
+  .extend({ domain: domainSchema.nullable() })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, { error: '変更する項目がありません' })
+
+export const createPromptInput = z.object({ text: promptText })
+
+export const competitorParams = brandParams.extend({
+  competitorId: z.uuid({ error: '競合IDの形式が正しくありません' }),
+})
+
+export const promptParams = brandParams.extend({
+  promptId: z.uuid({ error: '質問IDの形式が正しくありません' }),
+})
+
+/** ダッシュボードの絞り込み。画面の URL（days / ai / q）と API の両方で使う */
+export const metricsQuery = z.object({
+  days: z.coerce
+    .number()
+    .int()
+    .refine((d) => [7, 30, 90].includes(d), { error: '期間は 7・30・90 日から選んでください' })
+    .default(30),
+  ai: z.enum(PROVIDERS).optional(),
+  q: z.uuid().optional(),
+})
+export type MetricsQuery = z.infer<typeof metricsQuery>

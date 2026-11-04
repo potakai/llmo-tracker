@@ -58,7 +58,7 @@
   font-variant-numeric: tabular-nums;
 }
 @utility field {
-  @apply w-full rounded-[var(--radius-box)] border border-rule bg-surface px-3 py-2 text-ink outline-none focus:border-gemini;
+  @apply w-full rounded-[var(--radius-box)] border border-rule bg-surface px-3 py-2 text-ink outline-none focus:border-gemini focus-visible:ring-2 focus-visible:ring-gemini/40 disabled:cursor-not-allowed disabled:bg-paper disabled:text-ink-soft;
 }
 @utility btn {
   @apply inline-flex items-center justify-center gap-2 rounded-[var(--radius-box)] px-4 py-2 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50;

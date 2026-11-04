@@ -4,6 +4,7 @@ import { createMiddleware } from 'hono/factory'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import type { AppEnv, AuthedEnv, OrgEnv } from '../context'
+import { isDemoOrganization } from '../demo'
 import { errors } from '../errors'
 
 /** Cookie からセッションを読んで c.var に載せる（未ログインなら null） */
@@ -37,5 +38,12 @@ export const requireOrg = createMiddleware<OrgEnv>(async (c, next) => {
   if (membership.length === 0) throw errors.forbidden()
 
   c.set('organizationId', organizationId)
+  c.set('isDemo', await isDemoOrganization(organizationId))
+  await next()
+})
+
+/** デモ組織では、読み取り（GET）以外をすべて断る */
+export const blockDemoWrites = createMiddleware<OrgEnv>(async (c, next) => {
+  if (c.var.isDemo && c.req.method !== 'GET') throw errors.demoReadOnly()
   await next()
 })
