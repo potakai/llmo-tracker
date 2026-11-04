@@ -10,6 +10,10 @@ function describeError(mode: 'login' | 'signup', error: { status?: number; messa
   if (error.status !== undefined && error.status >= 500) {
     return 'サーバーでエラーが起きました。少し待ってからもう一度試してください'
   }
+  // Better Auth の試行回数の制限（本番のみ。ログインは 10 秒に 3 回まで）
+  if (error.status === 429) {
+    return '短い時間に何度も送信されたため、受け付けを止めています。10 秒ほど待ってからもう一度試してください'
+  }
   if (error.status === 403) {
     return 'ログインを受け付けられませんでした。開いている URL が、サーバーの設定（BETTER_AUTH_URL）と合っているか確かめてください'
   }

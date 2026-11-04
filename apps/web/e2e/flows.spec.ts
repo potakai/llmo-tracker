@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { DEMO_STATE } from './paths'
 
 test('デモアカウントでログインすると、30日分のダッシュボードが見られる', async ({ page }) => {
   await page.goto('/')
@@ -53,41 +54,44 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await expect(page.getByText(/直近7日、AI の回答 20 件のうち/)).toBeVisible()
 })
 
-test('デモは閲覧専用：計測ボタンは押せず、設定も変えられない', async ({ page }) => {
-  await page.goto('/login?demo=1')
-  await page.getByRole('button', { name: 'ログイン' }).click()
-  await expect(page.getByText('デモアカウントで見ています')).toBeVisible()
-  await expect(page.getByRole('button', { name: '今すぐ計測' })).toBeDisabled()
-  await expect(page.getByText('デモでは計測できません')).toBeVisible()
+test.describe('デモアカウントでログイン済み', () => {
+  // ログインは試行回数の制限（10 秒に 3 回）があるので、ログイン済みの状態を使い回す
+  test.use({ storageState: DEMO_STATE })
 
-  await page.getByRole('link', { name: '設定' }).click()
-  await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
-})
+  test('デモは閲覧専用：計測ボタンは押せず、設定も変えられない', async ({ page }) => {
+    await page.goto('/app')
+    await expect(page.getByText('デモアカウントで見ています')).toBeVisible()
+    await expect(page.getByRole('button', { name: '今すぐ計測' })).toBeDisabled()
+    await expect(page.getByText('デモでは計測できません')).toBeVisible()
 
-test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
-  await page.goto('/login?demo=1')
-  await page.getByRole('button', { name: 'ログイン' }).click()
-  await expect(page).toHaveURL(/\/app\/brands\//)
+    await page.getByRole('link', { name: '設定' }).click()
+    await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
+  })
 
-  await page.getByRole('link', { name: 'Gemini', exact: true }).click()
-  await expect(page).toHaveURL(/ai=gemini/)
-  await page.getByRole('link', { name: '90日' }).click()
-  await expect(page).toHaveURL(/days=90/)
-  await expect(page.getByText(/直近7日、Geminiの回答/)).toBeVisible()
+  test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
+    await page.goto('/app')
+    await expect(page).toHaveURL(/\/app\/brands\//)
 
-  // URL を直接開いても同じ状態
-  await page.goto(page.url())
-  await expect(page.getByRole('link', { name: 'Gemini', exact: true })).toHaveAttribute(
-    'aria-current',
-    'true',
-  )
+    await page.getByRole('link', { name: 'Gemini', exact: true }).click()
+    await expect(page).toHaveURL(/ai=gemini/)
+    await page.getByRole('link', { name: '90日' }).click()
+    await expect(page).toHaveURL(/days=90/)
+    await expect(page.getByText(/直近7日、Geminiの回答/)).toBeVisible()
 
-  // 質問ごとの結果から、質問の詳細へ（絞り込みは引き継ぐ）
-  await page.goto(page.url().replace('ai=gemini', ''))
-  await page.getByRole('table').getByRole('link').first().click()
-  await expect(page).toHaveURL(/\/prompts\/.+days=90/)
-  await expect(page.getByRole('heading', { name: /この質問での言及率の推移/ })).toBeVisible()
+    // URL を直接開いても同じ状態
+    await page.goto(page.url())
+    await expect(page.getByRole('link', { name: 'Gemini', exact: true })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+
+    // 質問ごとの結果から、質問の詳細へ（絞り込みは引き継ぐ）
+    await page.goto(page.url().replace('ai=gemini', ''))
+    await page.getByRole('table').getByRole('link').first().click()
+    await expect(page).toHaveURL(/\/prompts\/.+days=90/)
+    await expect(page.getByRole('heading', { name: /この質問での言及率の推移/ })).toBeVisible()
+  })
 })
 
 test('設定で質問と競合を編集できる', async ({ page }) => {

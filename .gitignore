@@ -8,3 +8,9 @@ dist
 coverage
 test-results
 playwright-report
+
+# Next.js が dev / build のたびに書き換えるファイル（pnpm typecheck でも作られる）
+next-env.d.ts
+
+# Playwright のログイン状態
+**/playwright/.auth
