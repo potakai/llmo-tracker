@@ -1,5 +1,7 @@
 # LLMO Tracker
 
+[![CI](https://github.com/potakai/llmo-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/potakai/llmo-tracker/actions/workflows/ci.yml)
+
 ChatGPT や Gemini に毎日同じ質問を投げて、自社と競合が回答の中でどう扱われているか（言及率・順位・引用元）を計測するツール。
 
 > 開発中（v1）
@@ -88,6 +90,7 @@ pnpm dev
 - **絞り込みは URL に持つ**：期間・AI・質問は `?days=90&ai=gemini&q=...` に入るので、リンクを共有しても同じ画面になる。期間と AI はただのリンクなので JavaScript なしでも動き、キーボードでたどれる
 - **質問の文面は書き換えさせない**：変えると過去の計測と比べられなくなるため、アーカイブして新しく追加する形にしている。有効な質問の上限（10 個）は、同時に追加されても超えないようブランドの行をロックしてから数える（同時に 12 件送っても 10 件で止まることをテストで確認）
 - **`.env` はモノレポのルートに 1 つ**：Next.js（`next.config.ts`）、Drizzle、テスト、スクリプトのすべてがルートの `.env` を読む。Next.js は標準では `apps/web/.env` しか読まないため、`next.config.ts` で明示的に読み込んでいる（これが抜けてログインできなかったことがあり、E2E テストで検出できるようにした）
+- **CI は本番と同じ形で E2E を流す**：GitHub Actions で Lint・型チェック・結合テスト（実 DB）・ビルドに加え、ビルドしたアプリを `next start` で立ち上げて E2E を流す。スキーマを変えたのにマイグレーションを作り忘れた場合も落ちる。`pnpm dev` では効かないログインの試行回数の制限（10 秒に 3 回）に、CI で初めて気づけた
 - **id は UUIDv7**：時刻順に並ぶので、作成順の並び替えやインデックスと相性がいい
 
 ## 計測の限界

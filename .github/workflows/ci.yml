@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同じブランチに続けて push したら、古い実行は止める
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  LLM_MODE: fake
+  BETTER_AUTH_SECRET: ci-secret-ci-secret-ci-secret-ci-0000
+  BETTER_AUTH_URL: http://localhost:3000
+
+jobs:
+  # Lint・型チェック・結合テスト・ビルド
+  check:
+    name: Lint / 型チェック / テスト / ビルド
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: llmo
+          POSTGRES_PASSWORD: llmo
+          POSTGRES_DB: llmo_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U llmo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # テストはこの DB を毎回作り直す。ビルドは DB に接続しない
+      DATABASE_URL: postgres://llmo:llmo@localhost:5432/llmo_test
+      TEST_DATABASE_URL: postgres://llmo:llmo@localhost:5432/llmo_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint（Biome）
+        run: pnpm exec biome ci --reporter=github .
+      - name: 型チェック
+        run: pnpm typecheck
+      - name: マイグレーションとスキーマが一致しているか
+        run: pnpm db:generate && git diff --exit-code -- packages/db/drizzle
+      - name: 結合テスト（実 DB）
+        run: pnpm test
+      - name: ビルド
+        run: pnpm build
+
+  # ブラウザで画面を通しで確かめる
+  e2e:
+    name: E2E（Playwright）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: llmo
+          POSTGRES_PASSWORD: llmo
+          POSTGRES_DB: llmo
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U llmo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://llmo:llmo@localhost:5432/llmo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Playwright のブラウザを入れる
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: マイグレーション
+        run: pnpm db:migrate
+      - name: ビルド
+        run: pnpm build
+      # CI では本番と同じ `next start` に対して流す（playwright.config.ts を参照）。デモデータは globalSetup が作る
+      - name: E2E
+        run: pnpm test:e2e
+
+      - name: 失敗したときのレポートを残す
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
