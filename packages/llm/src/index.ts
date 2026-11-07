@@ -2,6 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createLlmExtractor } from './extract/llm'
 import { createRuleBasedExtractor } from './extract/rule-based'
 import type { Extractor } from './extract/types'
+import { createLlmPolicyWith, type LlmPolicy } from './policy'
 import { createFakeProvider } from './providers/fake'
 import { createGeminiProvider } from './providers/gemini'
 import { createOpenAIProvider } from './providers/openai'
@@ -22,6 +23,7 @@ export {
   type ExtractionResult,
   type Extractor,
 } from './extract/types'
+export { createLlmPolicyWith, type LlmMode, type LlmPolicy, liveModeFor } from './policy'
 export { estimateCostUsd } from './pricing'
 export { createFakeProvider } from './providers/fake'
 export { createGeminiProvider, DEFAULT_GEMINI_MODEL } from './providers/gemini'
@@ -61,4 +63,18 @@ export function createExtractorFromEnv(env: Record<string, string | undefined>):
   const modelId = env.EXTRACTOR_MODEL || DEFAULT_EXTRACTOR_MODEL
   const openai = createOpenAI({ apiKey })
   return createLlmExtractor({ model: openai.responses(modelId), modelId })
+}
+
+/**
+ * 組織ごとに本物の AI とフェイクを使い分ける（runner / jobs / web から使う）。
+ * LLM_MODE=live でも、LIVE_ORGANIZATION_IDS にない組織はフェイクで計測する。
+ */
+export function createLlmPolicy(env: Record<string, string | undefined>): LlmPolicy<Providers> {
+  return createLlmPolicyWith(env, (mode) => {
+    const modeEnv = { ...env, LLM_MODE: mode }
+    return {
+      providers: createProvidersFromEnv(modeEnv),
+      extractor: createExtractorFromEnv(modeEnv),
+    }
+  })
 }

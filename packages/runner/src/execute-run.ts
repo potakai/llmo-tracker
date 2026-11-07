@@ -25,16 +25,24 @@ const _providerIdsMatch: [Provider] extends [ProviderId]
   : never = true
 void _providerIdsMatch
 
-export type ExecuteRunDeps = {
-  db: Db
+/** run の処理に使う AI：回答をもらうプロバイダーと、回答から言及を取り出す抽出器 */
+export type RunLlm = {
   providers: Providers
   /** 回答から言及を取り出す（LLM またはルールベース） */
   extractor: Extractor
+}
+
+export type ExecuteRunDeps = {
+  db: Db
   /** 同時に投げる質問の数（API のレート制限に合わせて調整） */
   concurrency?: number
   /** 1 回の質問のタイムアウト */
   timeoutMs?: number
-}
+} & (
+  | RunLlm
+  /** 組織ごとに AI を選ぶ（本物の AI を使ってよい組織だけ live にする）。run のブランドの組織 ID が渡される */
+  | { llmFor: (organizationId: string) => RunLlm }
+)
 
 export type RunSummary = {
   runId: string
@@ -70,7 +78,7 @@ export class RunNotFoundError extends Error {
  * - 終わっている run を渡されたら、何もせず集計だけ返す
  */
 export async function executeRun(deps: ExecuteRunDeps, runId: string): Promise<RunSummary> {
-  const { db, providers } = deps
+  const { db } = deps
 
   const target = await db.query.run.findFirst({
     where: eq(runTable.id, runId),
@@ -85,6 +93,8 @@ export async function executeRun(deps: ExecuteRunDeps, runId: string): Promise<R
   })
   if (!target) throw new RunNotFoundError(runId)
   if (FINISHED.has(target.status)) return summarize(db, runId)
+  const { providers, extractor } =
+    'llmFor' in deps ? deps.llmFor(target.brand.organizationId) : deps
 
   await db
     .update(runTable)
@@ -132,7 +142,7 @@ export async function executeRun(deps: ExecuteRunDeps, runId: string): Promise<R
   )
 
   // 回答がそろってから、まとめて分析する（分析だけ失敗しても回答は残る。あとから再分析できる）
-  await analyzeRun({ db, extractor: deps.extractor, concurrency: deps.concurrency }, runId)
+  await analyzeRun({ db, extractor, concurrency: deps.concurrency }, runId)
 
   const summary = await summarize(db, runId)
   await db

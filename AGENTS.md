@@ -33,6 +33,7 @@ pnpm test:e2e       # Playwright
 - **スキーマを変えたら `pnpm db:generate` でマイグレーションを作り、`packages/db/drizzle/` ごとコミット**する。生成された SQL は手で書き換えない（既存のデータを直す必要があるときだけ、SQL の先頭に追記して理由をコメントする）
 - `packages/db/src/schema/auth.ts` は Better Auth の生成物。手で編集せず `pnpm auth:generate` で作り直す
 - **本物の AI API は叩かない**。開発・テストは `LLM_MODE=fake`。`LLM_MODE=live` や `pnpm ask` は費用がかかるので、人に頼まれたときだけ
+- AI のプロバイダーや抽出器を新しく使う場所では、`createProvidersFromEnv` を直接呼ばず `createLlmPolicy(env).llmFor(organizationId)` を通す（本物の AI は `LIVE_ORGANIZATION_IDS` の組織だけ）
 - 質問（prompt）の文面は書き換えない設計。変えたいときはアーカイブして新しく追加する
 - 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` と CI にも足す。Trigger.dev のタスクが使う変数は、Trigger.dev のダッシュボードにも設定が必要
 - Web（`apps/web`）から `jobs` を読み込むときは、タスクの型（`import type`）と `src/keys.ts` だけにする。タスク本体を読み込むと DB・AI のコードが Next.js に入る

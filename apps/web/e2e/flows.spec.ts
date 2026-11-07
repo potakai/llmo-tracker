@@ -10,6 +10,8 @@ test('デモアカウントでログインすると、30日分のダッシュボ
   await expect(page).toHaveURL(/\/app\/brands\//)
   await expect(page.getByRole('heading', { name: 'サンプル会計' })).toBeVisible()
   await expect(page.getByText(/直近7日、AI の回答/)).toBeVisible()
+  // デモにはデモの案内だけを出す（サンプルの AI の案内は出さない）
+  await expect(page.getByText(/サンプルの AI/)).toHaveCount(0)
 
   // 実行の詳細で、回答の中身が見られる
   await page.getByRole('link', { name: '回答を見る' }).first().click()
@@ -48,6 +50,8 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByRole('button', { name: '登録して計測画面へ' }).click()
   await expect(page).toHaveURL(/\/app\/brands\//)
   await expect(page.getByText(/まだ計測していません。「今すぐ計測」を押すと/)).toBeVisible()
+  // 本物の AI を許可していない組織なので、フェイクで計測することが伝わる
+  await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeVisible()
 
   await page.getByRole('button', { name: '今すぐ計測' }).click()
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })

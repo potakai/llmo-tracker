@@ -4,6 +4,7 @@ export { createDailyRuns, type DailyRunsResult, isDemoMetadata, tokyoDate } from
 export {
   type ExecuteRunDeps,
   executeRun,
+  type RunLlm,
   RunNotFoundError,
   type RunSummary,
   toCitations,

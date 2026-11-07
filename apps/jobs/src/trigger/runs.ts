@@ -7,7 +7,7 @@ import {
   tokyoDate,
 } from '@llmo/runner'
 import { AbortTaskRunError, logger, schedules, task } from '@trigger.dev/sdk'
-import { getDb, getLlm } from '../deps'
+import { getDb, getLlmPolicy } from '../deps'
 import { EXECUTE_RUN_TASK_ID, executeRunKey } from '../keys'
 
 export type ExecuteRunPayload = { runId: string }
@@ -22,7 +22,7 @@ export const executeRunTask = task({
   queue: { concurrencyLimit: 3 },
   run: async ({ runId }: ExecuteRunPayload) => {
     try {
-      const summary = await executeRun({ db: getDb(), ...getLlm() }, runId)
+      const summary = await executeRun({ db: getDb(), llmFor: getLlmPolicy().llmFor }, runId)
       logger.info('run が終わりました', summary)
       return summary
     } catch (error) {
