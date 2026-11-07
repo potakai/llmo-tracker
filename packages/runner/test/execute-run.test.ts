@@ -97,3 +97,32 @@ describe('run の作成', () => {
     expect(await createScheduledRun(db, brand.id, '2026-10-30')).not.toBeNull()
   })
 })
+
+describe('組織ごとに AI を選ぶ（llmFor）', () => {
+  it('run のブランドの組織に合った AI だけを使う', async () => {
+    const live = await seedBrand({ samplesPerPrompt: 1 })
+    const other = await seedBrand({ samplesPerPrompt: 1 })
+    const liveLlm = countingProviders()
+    const fakeLlm = countingProviders()
+    const asked: string[] = []
+    const deps = {
+      db,
+      llmFor: (organizationId: string) => {
+        asked.push(organizationId)
+        return {
+          providers:
+            organizationId === live.brand.organizationId ? liveLlm.providers : fakeLlm.providers,
+          extractor,
+        }
+      },
+    }
+
+    await executeRun(deps, (await createManualRun(db, live.brand.id)).id)
+    expect(liveLlm.calls.openai).toBeGreaterThan(0)
+    expect(fakeLlm.calls.openai).toBe(0)
+
+    await executeRun(deps, (await createManualRun(db, other.brand.id)).id)
+    expect(fakeLlm.calls.openai).toBeGreaterThan(0)
+    expect(asked).toEqual([live.brand.organizationId, other.brand.organizationId])
+  })
+})

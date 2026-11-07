@@ -1,6 +1,7 @@
 import 'server-only'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
+import { getLlmPolicy } from '@/lib/llm'
 import { isDemoOrganization } from './demo'
 import { AppError } from './errors'
 import { findBrandInOrg } from './routes/brands'
@@ -20,7 +21,9 @@ export const loadBrandForPage = cache(async (rawBrandId: string) => {
       findBrandInOrg(organizationId, parsed.data.brandId),
       isDemoOrganization(organizationId),
     ])
-    return { brand, isDemo }
+    // 本物の AI で計測している組織か（それ以外はフェイクの回答で、数字は動作確認用）
+    const llmMode = getLlmPolicy().modeFor(organizationId)
+    return { brand, isDemo, llmMode }
   } catch (error) {
     if (error instanceof AppError && error.status === 404) notFound()
     throw error

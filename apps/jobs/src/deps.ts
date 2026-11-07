@@ -1,13 +1,8 @@
 import { createDb, type Db } from '@llmo/db'
-import {
-  createExtractorFromEnv,
-  createProvidersFromEnv,
-  type Extractor,
-  type Providers,
-} from '@llmo/llm'
+import { createLlmPolicy, type LlmPolicy, type Providers } from '@llmo/llm'
 
 let db: Db | undefined
-let llm: { providers: Providers; extractor: Extractor } | undefined
+let policy: LlmPolicy<Providers> | undefined
 
 /** DB の接続。ワーカーの中で 1 つを使い回す */
 export function getDb(): Db {
@@ -20,11 +15,11 @@ export function getDb(): Db {
   return db
 }
 
-/** AI の呼び出しと抽出。LLM_MODE=fake なら API キーなしで動く */
-export function getLlm() {
-  llm ??= {
-    providers: createProvidersFromEnv(process.env),
-    extractor: createExtractorFromEnv(process.env),
-  }
-  return llm
+/**
+ * 組織ごとに使う AI を選ぶ。本物の AI を使うのは LLM_MODE=live かつ LIVE_ORGANIZATION_IDS にある組織だけ。
+ * それ以外はフェイク（API キーなしで動き、費用もかからない）
+ */
+export function getLlmPolicy(): LlmPolicy<Providers> {
+  policy ??= createLlmPolicy(process.env)
+  return policy
 }
