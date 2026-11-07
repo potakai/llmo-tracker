@@ -73,7 +73,7 @@ pnpm dev
 | `pnpm test`                          | 結合テスト（テスト用DBを作り直してから流す）                                                                           |
 | `pnpm test:e2e`                      | ブラウザで画面を通しで確かめる（`pnpm dev` を自動で起動。初回は `pnpm --filter web exec playwright install chromium`） |
 | `pnpm typecheck`                     | 全パッケージの型チェック                                                                                               |
-| `pnpm jobs:dev` / `pnpm jobs:deploy` | Trigger.dev のタスクを開発環境につなぐ / 本番にデプロイする（`.env` に `TRIGGER_SECRET_KEY` が必要）                   |
+| `pnpm jobs:dev` / `pnpm jobs:deploy` | Trigger.dev のタスクを開発環境につなぐ / 本番にデプロイする（初回はブラウザで Trigger.dev にログイン）                   |
 | `pnpm lint` / `pnpm format`          | Biome でチェック / 自動修正                                                                                            |
 
 ## 設計判断
