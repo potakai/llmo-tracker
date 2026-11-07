@@ -1,8 +1,8 @@
 import { handle } from 'hono/vercel'
 import { createApp } from '@/server/app'
-import { dispatchInProcess } from '@/server/dispatch'
+import { selectDispatcher } from '@/server/dispatch'
 
-const app = createApp({ dispatchRun: dispatchInProcess })
+const app = createApp({ dispatchRun: selectDispatcher() })
 
 // Hono のアプリを Next.js の Route Handler として動かす
 export const GET = handle(app)

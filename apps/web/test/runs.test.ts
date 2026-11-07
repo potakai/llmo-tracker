@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createApp } from '@/server/app'
 import { TestClient } from './helpers'
 
 async function setupBrand(samplesPerPrompt = 2) {
@@ -83,5 +84,32 @@ describe('ダッシュボードの数字', () => {
     const res = await client.get(`/api/brands/${brandId}/metrics?days=365`)
     expect(res.json.error.code).toBe('VALIDATION_ERROR')
     expect(res.status).toBe(400)
+  })
+})
+
+describe('ジョブに渡せなかったとき', () => {
+  it('503 を返し、run を終わらせて、すぐに次の実行ができる', async () => {
+    let fail = true
+    const flaky = createApp({
+      dispatchRun: () => {
+        if (fail) throw new Error('Trigger.dev に接続できません')
+      },
+    })
+    const client = new TestClient(flaky)
+    await client.signUp('frank')
+    await client.createOrganization('Frank Inc')
+    const { json } = await client.post('/api/brands', { name: '◯◯会計', prompts: ['質問'] })
+    const brandId = json.brand.id as string
+
+    const res = await client.post(`/api/brands/${brandId}/runs`, {})
+    expect(res.status).toBe(503)
+    expect(res.json.error.code).toBe('DISPATCH_FAILED')
+
+    const list = await client.get(`/api/brands/${brandId}/runs`)
+    expect(list.json.runs[0].status).toBe('failed')
+
+    fail = false
+    const retry = await client.post(`/api/brands/${brandId}/runs`, {})
+    expect(retry.status).toBe(202)
   })
 })

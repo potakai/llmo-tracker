@@ -34,6 +34,12 @@ export const errors = {
       'RUN_ALREADY_ACTIVE',
       'このブランドはすでに実行中です。終わるまで待ってください',
     ),
+  dispatchFailed: () =>
+    new AppError(
+      503,
+      'DISPATCH_FAILED',
+      '計測を始められませんでした。少し待ってからもう一度試してください',
+    ),
   noPrompts: () => new AppError(400, 'NO_PROMPTS', '有効な質問が1つもありません'),
   demoReadOnly: () =>
     new AppError(403, 'DEMO_READ_ONLY', 'デモアカウントは閲覧専用です。計測や編集はできません'),

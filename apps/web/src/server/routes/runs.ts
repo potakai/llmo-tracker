@@ -1,4 +1,4 @@
-import { createManualRun, RunAlreadyActiveError } from '@llmo/runner'
+import { abandonRun, createManualRun, RunAlreadyActiveError } from '@llmo/runner'
 import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { AppDeps } from '../app'
@@ -25,7 +25,14 @@ export const createRunRoutes = (deps: AppDeps) =>
         if (error instanceof RunAlreadyActiveError) throw errors.runAlreadyActive()
         throw error
       }
-      await deps.dispatchRun(created.id)
+      try {
+        await deps.dispatchRun(created.id)
+      } catch (error) {
+        // ジョブに渡せなかった run を残すと、30 分後の回収までそのブランドで実行できなくなる
+        console.error('[run] ジョブに渡せませんでした', created.id, error)
+        await abandonRun(db, created.id)
+        throw errors.dispatchFailed()
+      }
       return c.json({ run: created }, 202)
     })
 

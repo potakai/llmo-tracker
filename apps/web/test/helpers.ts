@@ -26,13 +26,16 @@ const ORIGIN = 'http://localhost:3000'
 export class TestClient {
   private cookies = new Map<string, string>()
 
+  /** 別の依存（失敗するジョブなど）で作ったアプリを渡すこともできる */
+  constructor(private readonly target: ReturnType<typeof createApp> = app) {}
+
   async request(method: string, path: string, body?: unknown) {
     const headers = new Headers({ origin: ORIGIN })
     if (body !== undefined) headers.set('content-type', 'application/json')
     if (this.cookies.size > 0) {
       headers.set('cookie', [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '))
     }
-    const res = await app.request(`${ORIGIN}${path}`, {
+    const res = await this.target.request(`${ORIGIN}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

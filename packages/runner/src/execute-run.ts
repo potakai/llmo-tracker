@@ -54,6 +54,13 @@ type Task = {
 
 const FINISHED = new Set(['succeeded', 'partial', 'failed'])
 
+/** run がない（ブランドごと消された など）。ジョブはリトライしても意味がないので、すぐ諦める */
+export class RunNotFoundError extends Error {
+  constructor(readonly runId: string) {
+    super(`run ${runId} が見つかりません`)
+  }
+}
+
 /**
  * 実行バッチを1つ処理する：質問 × AI × サンプル数 の分だけ AI に聞いて、回答を保存する。
  *
@@ -76,7 +83,7 @@ export async function executeRun(deps: ExecuteRunDeps, runId: string): Promise<R
       },
     },
   })
-  if (!target) throw new Error(`run ${runId} が見つかりません`)
+  if (!target) throw new RunNotFoundError(runId)
   if (FINISHED.has(target.status)) return summarize(db, runId)
 
   await db
