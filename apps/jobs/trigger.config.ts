@@ -2,8 +2,8 @@ import { defineConfig } from '@trigger.dev/sdk'
 
 /**
  * Trigger.dev の設定。タスクは src/trigger/ に置く。
- *   pnpm --filter jobs dev     … 手元のタスクを Trigger.dev の開発環境につなぐ
- *   pnpm --filter jobs deploy  … 本番にデプロイ
+ *   pnpm jobs:dev     … 手元のタスクを Trigger.dev の開発環境につなぐ
+ *   pnpm jobs:deploy  … 本番にデプロイ（`pnpm deploy` は pnpm 組み込みのコマンドなので、`run` を付けて呼んでいる）
  *
  * タスクが使う環境変数（DATABASE_URL、LLM_MODE、API キー）は、Trigger.dev のダッシュボードで環境ごとに設定する。
  */
