@@ -20,8 +20,8 @@
     "ask": "pnpm --filter @llmo/llm ask",
     "db:seed": "pnpm --filter web db:seed",
     "test:e2e": "pnpm --filter web test:e2e",
-    "jobs:dev": "pnpm --filter jobs dev",
-    "jobs:deploy": "pnpm --filter jobs deploy"
+    "jobs:dev": "pnpm --filter jobs run dev",
+    "jobs:deploy": "pnpm --filter jobs run deploy"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
