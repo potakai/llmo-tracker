@@ -109,4 +109,38 @@ describe('LLM での抽出（モックモデル）', () => {
     })
     expect(result.raw).toMatchObject({ fallbackFrom: 'mock-model' })
   })
+
+  it('abortSignal の時間を過ぎても LLM が返らなければ、待たずにルールベースにフォールバックする', async () => {
+    // Arrange：abortSignal で止められるまで返らないモデル（signal がなければ 1 秒後に返す）
+    const extractor = createLlmExtractor({ model: slowModel(1_000), modelId: 'mock-model' })
+
+    // Act
+    const startedAt = Date.now()
+    const result = await extractor.extract({
+      ...input('◯◯会計がおすすめです'),
+      abortSignal: AbortSignal.timeout(ABORT_AFTER_MS),
+    })
+
+    // Assert
+    expect(result).toMatchObject({ brandMentioned: true, extractorModel: 'rule-based' })
+    expect(result.raw).toMatchObject({ fallbackFrom: 'mock-model' })
+    expect(Date.now() - startedAt).toBeLessThan(500)
+  })
 })
+
+const ABORT_AFTER_MS = 50
+
+/** abortSignal で止められるまで返らないモデル。signal がなければ delayMs 後に正しい JSON を返す */
+function slowModel(delayMs: number) {
+  const valid = mockModel({ entities: [{ name: '◯◯会計' }], brandSentiment: 'positive' })
+  return new MockLanguageModelV4({
+    doGenerate: (options) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve(valid.doGenerate(options)), delayMs)
+        options.abortSignal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(options.abortSignal?.reason)
+        })
+      }),
+  })
+}

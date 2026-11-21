@@ -4,8 +4,11 @@ export { createDailyRuns, type DailyRunsResult, isDemoMetadata, tokyoDate } from
 export {
   type ExecuteRunDeps,
   executeRun,
+  executeRunSlice,
   type RunLlm,
   RunNotFoundError,
+  type RunSliceOptions,
+  type RunSliceResult,
   type RunSummary,
   toCitations,
 } from './execute-run'
