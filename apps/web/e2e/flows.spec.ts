@@ -54,6 +54,7 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   // 本物の AI を許可していない組織なので、フェイクで計測することが伝わる
   await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeVisible()
+  await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeInViewport()
 
   await page.getByRole('button', { name: '今すぐ計測' }).click()
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })
