@@ -23,11 +23,28 @@ const ORIGIN = 'http://localhost:3000'
  * ブラウザの代わり。Cookie を覚えておいて、次のリクエストに付ける。
  * サーバーは立てずに app.request() で Hono を直接呼ぶ。
  */
+/** リクエストを受けるもの：Hono のアプリ、または Next.js の Route Handler（routeHandlerTarget で包む） */
+export type RequestTarget = {
+  request: (url: string, init: RequestInit) => Response | Promise<Response>
+}
+
+/** Next.js の Route Handler（app/api/.../route.ts が export する GET / POST など）をテストから呼べる形にする */
+export function routeHandlerTarget(
+  handlers: Record<'GET' | 'POST', (req: Request) => Response | Promise<Response>>,
+): RequestTarget {
+  return {
+    request: (url, init) => {
+      const method = init.method === 'POST' ? 'POST' : 'GET'
+      return handlers[method](new Request(url, init))
+    },
+  }
+}
+
 export class TestClient {
   private cookies = new Map<string, string>()
 
-  /** 別の依存（失敗するジョブなど）で作ったアプリを渡すこともできる */
-  constructor(private readonly target: ReturnType<typeof createApp> = app) {}
+  /** 別の依存（失敗するジョブなど）で作ったアプリや、本番と同じ Route Handler を渡すこともできる */
+  constructor(private readonly target: RequestTarget = app) {}
 
   async request(method: string, path: string, body?: unknown) {
     const headers = new Headers({ origin: ORIGIN })

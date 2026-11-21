@@ -92,7 +92,7 @@ describe('ジョブに渡せなかったとき', () => {
     let fail = true
     const flaky = createApp({
       dispatchRun: () => {
-        if (fail) throw new Error('Trigger.dev に接続できません')
+        if (fail) throw new Error('Inngest に接続できません')
       },
     })
     const client = new TestClient(flaky)
