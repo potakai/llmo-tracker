@@ -1030,7 +1030,7 @@
   },
   {
     "id": "travel-prose-katakana-alias",
-    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayFennel が「ステイフェンネル」と書かれている。普通の文章での言及",
+    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayFennel が「ステイフェンネル」と書かれている。普通の文章での言及。ブランドについては「口コミの数ではたびねどこが一番多い」と件数を比べているだけで、評価や推薦ではないので、感情は neutral",
     "input": {
       "answerText": "温泉旅館を探すならヤドホタルが便利です。直前の予約で安く泊まりたいならステイフェンネルのタイムセールもチェックしましょう。口コミの数ではたびねどこが一番多いので、迷ったら比べてみてください。",
       "brand": {
@@ -1053,7 +1053,7 @@
     "expected": {
       "brandMentioned": true,
       "brandRank": 3,
-      "sentiment": "positive",
+      "sentiment": "neutral",
       "mentions": [
         {
           "entityType": "competitor",
