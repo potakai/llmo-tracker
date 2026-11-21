@@ -5,7 +5,7 @@ import { parseEvalArgs } from '../src/eval/args'
 import { createEvalExtractor } from '../src/eval/extractors'
 import { formatReport } from '../src/eval/report'
 import { resultFileName } from '../src/eval/results'
-import { aggregateScores, scoreCase } from '../src/eval/score'
+import { aggregateScores, type ScoreOptions, scoreCase } from '../src/eval/score'
 import { createUsageTracker } from '../src/eval/usage'
 
 describe('引数の解釈', () => {
@@ -48,6 +48,13 @@ describe('評価に使う抽出器', () => {
     expect(created).toMatchObject({ modelId: 'rule-based', usage: null })
   })
 
+  it('rule は感情を返さない仕様なので感情を採点せず、llm は採点する', () => {
+    expect(createEvalExtractor('rule', {}).scoreOptions).toEqual({ scoreSentiment: false })
+    expect(createEvalExtractor('llm', { OPENAI_API_KEY: 'sk-test' }).scoreOptions).toEqual({
+      scoreSentiment: true,
+    })
+  })
+
   it('llm で OPENAI_API_KEY がないと、分かりやすいエラーで止まる', () => {
     expect(() => createEvalExtractor('llm', {})).toThrow(/OPENAI_API_KEY/)
   })
@@ -75,7 +82,10 @@ describe('トークン数の集計', () => {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ entities: [{ name: 'ソラ会計' }], brandSentiment: 'positive' }),
+            text: JSON.stringify({
+              entities: [{ name: 'ソラハタ会計' }],
+              brandSentiment: 'positive',
+            }),
           },
         ],
         finishReason: { unified: 'stop', raw: 'stop' },
@@ -89,8 +99,8 @@ describe('トークン数の集計', () => {
     const tracker = createUsageTracker(model)
     const extractor = createLlmExtractor({ model: tracker.model, modelId: 'mock-model' })
     const input = {
-      answerText: 'ソラ会計',
-      brand: { name: 'ソラ会計', aliases: [] },
+      answerText: 'ソラハタ会計',
+      brand: { name: 'ソラハタ会計', aliases: [] },
       competitors: [],
     }
 
@@ -110,89 +120,108 @@ describe('結果の保存と表示', () => {
 
   it('レポートには指標の表と、外れたケースの id・外れた理由が出る', () => {
     // Arrange
-    const expected = {
-      brandMentioned: true,
-      brandRank: 1,
-      sentiment: 'positive' as const,
-      mentions: [{ entityType: 'brand' as const, competitorId: null, name: 'ソラ会計' }],
-    }
-    const cases = [
-      { id: 'ok-case', note: '正解', expected, score: scoreCase(expected, null), error: '失敗' },
-    ]
+    const score = scoreCase(expected, null, WITHOUT_SENTIMENT)
 
     // Act
     const report = formatReport({
       extractor: 'rule',
       modelId: 'rule-based',
-      metrics: aggregateScores(cases.map((c) => c.score)),
-      cases: cases.map((c) => ({ ...c, actual: null })),
+      metrics: aggregateScores([score], WITHOUT_SENTIMENT),
+      cases: [{ id: 'ng-case', note: 'メモ', expected, actual: null, score, error: '失敗' }],
       usage: null,
     })
 
     // Assert
     expect(report).toContain('ブランド言及の正解率')
     expect(report).toContain('登録済みの会社の F1')
-    expect(report).toContain('ok-case')
+    expect(report).toContain('ng-case')
     expect(report).toContain('抽出エラー: 失敗')
   })
 
-  it('感情の正解率が対象外（null）なら、表には「—」と対象外の理由を出す', () => {
-    // Arrange：感情を返さない抽出器の結果
-    const expected = {
-      brandMentioned: true,
-      brandRank: 1,
-      sentiment: 'positive' as const,
-      mentions: [{ entityType: 'brand' as const, competitorId: null, name: 'ソラ会計' }],
-    }
-    const actual = {
-      brandMentioned: true,
-      brandRank: 1,
-      sentiment: null,
-      mentions: [{ ...expected.mentions[0]!, rank: 1 }],
-    }
-    const score = scoreCase(expected, actual)
+  it('感情を採点しない抽出器なら、感情の正解率は「—」と対象外の理由を出し、全問正解に感情を含めていないと注記する', () => {
+    // Arrange
+    const actual = actualWith(null)
+    const score = scoreCase(expected, actual, WITHOUT_SENTIMENT)
 
     // Act
     const report = formatReport({
       extractor: 'rule',
       modelId: 'rule-based',
-      metrics: aggregateScores([score]),
+      metrics: aggregateScores([score], WITHOUT_SENTIMENT),
       cases: [{ id: 'a', note: 'メモ', expected, actual, score, error: null }],
       usage: null,
     })
 
     // Assert
-    expect(report).toContain('| 感情の正解率 | — | 対象外（抽出器が感情を返さない） |')
+    expect(report).toContain('| 感情の正解率 | — | 対象外（この抽出器は感情を返さない） |')
     expect(report).toContain('全問正解の判定に感情を含めていない')
   })
 
-  it('感情だけが外れたケースは、詳細を出さずに id を1行にまとめる', () => {
-    // Arrange：ブランドも順位も合っているが、感情を返していない
-    const expected = {
-      brandMentioned: true,
-      brandRank: 1,
-      sentiment: 'positive' as const,
-      mentions: [{ entityType: 'brand' as const, competitorId: null, name: 'ソラ会計' }],
-    }
-    const actual = {
-      brandMentioned: true,
-      brandRank: 1,
-      sentiment: null,
-      mentions: [{ ...expected.mentions[0]!, rank: 1 }],
-    }
-    const score = scoreCase(expected, actual)
+  it('感情を採点する抽出器なら、注記は出さない', () => {
+    const actual = actualWith('positive')
+    const score = scoreCase(expected, actual, WITH_SENTIMENT)
+    const report = formatReport({
+      extractor: 'llm',
+      modelId: 'mock-model',
+      metrics: aggregateScores([score], WITH_SENTIMENT),
+      cases: [{ id: 'a', note: 'メモ', expected, actual, score, error: null }],
+      usage: null,
+    })
+    expect(report).toContain('| 感情の正解率 | 100.0% | 1 / 1 |')
+    expect(report).not.toContain('全問正解の判定に感情を含めていない')
+  })
+
+  it('感情だけが外れたケースは、詳細を出さずに1行にまとめ、各 id に「正解 → 抽出値」を添える', () => {
+    // Arrange：ブランドも順位も合っているが、感情が違う（または返していない）
+    const wrong = actualWith('neutral')
+    const missing = actualWith(null)
+    const scoreWrong = scoreCase(expected, wrong, WITH_SENTIMENT)
+    const scoreMissing = scoreCase(expected, missing, WITH_SENTIMENT)
 
     // Act
     const report = formatReport({
-      extractor: 'rule',
-      modelId: 'rule-based',
-      metrics: aggregateScores([score]),
-      cases: [{ id: 'only-sentiment', note: 'メモ', expected, actual, score, error: null }],
+      extractor: 'llm',
+      modelId: 'mock-model',
+      metrics: aggregateScores([scoreWrong, scoreMissing], WITH_SENTIMENT),
+      cases: [
+        { id: 'wrong', note: 'メモ', expected, actual: wrong, score: scoreWrong, error: null },
+        {
+          id: 'missing',
+          note: 'メモ',
+          expected,
+          actual: missing,
+          score: scoreMissing,
+          error: null,
+        },
+      ],
       usage: null,
     })
 
     // Assert
-    expect(report).toContain('感情だけが外れたケース（1 件）: only-sentiment')
-    expect(report).not.toContain('■ only-sentiment')
+    expect(report).toContain(
+      '感情だけが外れたケース（2 件）: wrong（positive → neutral）, missing（positive → null）',
+    )
+    expect(report).not.toContain('■ wrong')
   })
 })
+
+const WITH_SENTIMENT: ScoreOptions = { scoreSentiment: true }
+const WITHOUT_SENTIMENT: ScoreOptions = { scoreSentiment: false }
+
+/** 正解：ブランドが1位で positive */
+const expected = {
+  brandMentioned: true,
+  brandRank: 1,
+  sentiment: 'positive' as const,
+  mentions: [{ entityType: 'brand' as const, competitorId: null, name: 'ソラハタ会計' }],
+}
+
+/** ブランドも順位も合っていて、感情だけを変えた抽出結果 */
+function actualWith(sentiment: 'positive' | 'neutral' | 'negative' | null) {
+  return {
+    brandMentioned: true,
+    brandRank: 1,
+    sentiment,
+    mentions: [{ entityType: 'brand' as const, competitorId: null, name: 'ソラハタ会計', rank: 1 }],
+  }
+}

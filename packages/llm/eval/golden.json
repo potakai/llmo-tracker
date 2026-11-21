@@ -3,12 +3,27 @@
     "id": "acct-list-brand-third",
     "note": "番号付きリストの中で、2位以下（3位）に出てくる",
     "input": {
-      "answerText": "中小企業におすすめのクラウド会計ソフトを3つ紹介します。\n\n1. **クモノス会計**：銀行やカードの明細を自動で取り込めます。\n2. **ホシゾラ帳簿**：料金が安く、個人事業主に人気です。\n3. **ソラ会計**：請求書の発行から仕訳までまとめてできます。\n\nどれも無料で試せるので、使い勝手を比べてから決めるのがおすすめです。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "中小企業におすすめのクラウド会計ソフトを3つ紹介します。\n\n1. **クモツムギ会計**：銀行やカードの明細を自動で取り込めます。\n2. **ホシツグミ帳簿**：料金が安く、個人事業主に人気です。\n3. **ソラハタ会計**：請求書の発行から仕訳までまとめてできます。\n\nどれも無料で試せるので、使い勝手を比べてから決めるのがおすすめです。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -16,9 +31,21 @@
       "brandRank": 3,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "competitor", "competitorId": "hoshizora", "name": "ホシゾラ帳簿" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "hoshitsugumi",
+          "name": "ホシツグミ帳簿"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
       ]
     }
   },
@@ -26,12 +53,27 @@
     "id": "acct-not-mentioned",
     "note": "ブランドが出てこない",
     "input": {
-      "answerText": "個人事業主向けなら、次の2つが定番です。\n\n- クモノス会計：確定申告の書類作成までできる\n- ナミマ経理：スマホアプリの使い勝手がよい\n\n取引が多い場合は、銀行連携の対応範囲も確認しましょう。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "個人事業主向けなら、次の2つが定番です。\n\n- クモツムギ会計：確定申告の書類作成までできる\n- ナミヨセ経理：スマホアプリの使い勝手がよい\n\n取引が多い場合は、銀行連携の対応範囲も確認しましょう。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -39,21 +81,44 @@
       "brandRank": null,
       "sentiment": null,
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        }
       ]
     }
   },
   {
     "id": "acct-alias-english",
-    "note": "別名（カタカナ・漢字の正式名ではなく英字の Sora Kaikei）で出てくる",
+    "note": "別名（カタカナ・漢字の正式名ではなく英字の Sorahata Kaikei）で出てくる",
     "input": {
-      "answerText": "フリーランスなら Sora Kaikei が使いやすいです。仕訳の候補を自動で出してくれるので、簿記に詳しくなくても続けられます。法人で使うなら Kumonos も候補になります。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "フリーランスなら Sorahata Kaikei が使いやすいです。仕訳の候補を自動で出してくれるので、簿記に詳しくなくても続けられます。法人で使うなら Kumotsumugi も候補になります。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -61,21 +126,44 @@
       "brandRank": 1,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "brand", "competitorId": null, "name": "Sora Kaikei" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "Kumonos" }
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "Sorahata Kaikei"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "Kumotsumugi"
+        }
       ]
     }
   },
   {
     "id": "acct-alias-fullwidth",
-    "note": "別名（全角英字・全角数字）で出てくる：ＳＯＲＡ会計、ＫＵＭＯＮＯＳ",
+    "note": "別名（全角英字・全角数字）で出てくる：ＳＯＲＡＨＡＴＡ会計、ＫＵＭＯＴＳＵＭＵＧＩ",
     "input": {
-      "answerText": "おすすめは次のとおりです。\n１．ＫＵＭＯＮＯＳ（銀行連携が豊富）\n２．ＳＯＲＡ会計（請求書の作成が簡単）\n３．ナミマ経理（サポートが手厚い）",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "おすすめは次のとおりです。\n１．ＫＵＭＯＴＳＵＭＵＧＩ（銀行連携が豊富）\n２．ＳＯＲＡＨＡＴＡ会計（請求書の作成が簡単）\n３．ナミヨセ経理（サポートが手厚い）",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -83,22 +171,49 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "ＫＵＭＯＮＯＳ" },
-        { "entityType": "brand", "competitorId": null, "name": "ＳＯＲＡ会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "ＫＵＭＯＴＳＵＭＵＧＩ"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ＳＯＲＡＨＡＴＡ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        }
       ]
     }
   },
   {
     "id": "acct-alias-letter-case",
-    "note": "別名（大文字・小文字の違い）で出てくる：sora kaikei、HOSHIZORA",
+    "note": "別名（大文字・小文字の違い）で出てくる：sorahata kaikei、HOSHITSUGUMI",
     "input": {
-      "answerText": "コストを抑えたいなら HOSHIZORA、機能の多さを重視するなら sora kaikei を選ぶとよいでしょう。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "コストを抑えたいなら HOSHITSUGUMI、機能の多さを重視するなら sorahata kaikei を選ぶとよいでしょう。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -106,21 +221,44 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "hoshizora", "name": "HOSHIZORA" },
-        { "entityType": "brand", "competitorId": null, "name": "sora kaikei" }
+        {
+          "entityType": "competitor",
+          "competitorId": "hoshitsugumi",
+          "name": "HOSHITSUGUMI"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "sorahata kaikei"
+        }
       ]
     }
   },
   {
     "id": "acct-alias-unregistered-hiragana",
-    "note": "別名（登録されていない表記）で出てくる：ひらがなの「そら会計」。登録済みの別名にない表記でも、ブランドとして数える",
+    "note": "別名（登録されていない表記）で出てくる：ひらがなの「そらはた会計」。登録済みの別名にない表記でも、ブランドとして数える",
     "input": {
-      "answerText": "初めての確定申告なら、そら会計かクモノス会計が安心です。どちらも画面の案内に沿って入力するだけで書類ができあがります。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "初めての確定申告なら、そらはた会計かクモツムギ会計が安心です。どちらも画面の案内に沿って入力するだけで書類ができあがります。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -128,8 +266,16 @@
       "brandRank": 1,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "brand", "competitorId": null, "name": "そら会計" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" }
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "そらはた会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        }
       ]
     }
   },
@@ -137,12 +283,27 @@
     "id": "acct-prose",
     "note": "箇条書きではない、普通の文章での言及",
     "input": {
-      "answerText": "会計ソフトを選ぶなら、まずはナミマ経理を検討するとよいでしょう。サポートが手厚く、初めての人でも安心です。銀行連携を重視するならソラ会計も有力な選択肢で、クモノス会計は従業員の多い会社向けの機能が充実しています。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "会計ソフトを選ぶなら、まずはナミヨセ経理を検討するとよいでしょう。サポートが手厚く、初めての人でも安心です。銀行連携を重視するならソラハタ会計も有力な選択肢で、クモツムギ会計は従業員の多い会社向けの機能が充実しています。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -150,9 +311,21 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" }
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        }
       ]
     }
   },
@@ -160,12 +333,27 @@
     "id": "acct-repeat-brand-intro",
     "note": "同じ社名が何度も出てくる：導入文で先に名前が出て、そのあとのリストでは2位。順位は最初の登場で決まるので1位",
     "input": {
-      "answerText": "クラウド会計ではソラ会計やクモノス会計がよく比較されます。\n\n1. クモノス会計：機能が多く、大きな会社でも使える\n2. ソラ会計：操作がシンプルで、はじめてでも迷わない\n\nまとめると、少人数の会社ならソラ会計、従業員が多いならクモノス会計がおすすめです。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "クラウド会計ではソラハタ会計やクモツムギ会計がよく比較されます。\n\n1. クモツムギ会計：機能が多く、大きな会社でも使える\n2. ソラハタ会計：操作がシンプルで、はじめてでも迷わない\n\nまとめると、少人数の会社ならソラハタ会計、従業員が多いならクモツムギ会計がおすすめです。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -173,8 +361,16 @@
       "brandRank": 1,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" }
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        }
       ]
     }
   },
@@ -182,12 +378,27 @@
     "id": "acct-repeat-competitor",
     "note": "同じ社名（競合）が別名も含めて何度も出てくる。2回目以降の登場は順位に影響しない",
     "input": {
-      "answerText": "ホシゾラ帳簿は料金の安さが魅力です。ホシゾラ帳簿の無料プランでも仕訳は無制限に入力できます。一方で、ソラ会計は請求書や見積書の作成まで1つでできるのが強みです。ホシゾラは機能を絞っているぶん、画面がわかりやすいという声もあります。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "ホシツグミ帳簿は料金の安さが魅力です。ホシツグミ帳簿の無料プランでも仕訳は無制限に入力できます。一方で、ソラハタ会計は請求書や見積書の作成まで1つでできるのが強みです。ホシツグミは機能を絞っているぶん、画面がわかりやすいという声もあります。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -195,8 +406,16 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "hoshizora", "name": "ホシゾラ帳簿" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" }
+        {
+          "entityType": "competitor",
+          "competitorId": "hoshitsugumi",
+          "name": "ホシツグミ帳簿"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
       ]
     }
   },
@@ -204,49 +423,102 @@
     "id": "acct-generic-nouns",
     "note": "「会計ソフト」「クラウド会計」「給与計算ソフト」のような一般名詞を、社名として拾わない",
     "input": {
-      "answerText": "会計ソフト選びでは、まずクラウド会計かインストール型の会計ソフトかを決めましょう。給与計算ソフトや経費精算システムと連携できるかも大切です。具体的な製品としては、ソラ会計が連携先の多さで選ばれています。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "会計ソフト選びでは、まずクラウド会計かインストール型の会計ソフトかを決めましょう。給与計算ソフトや経費精算システムと連携できるかも大切です。具体的な製品としては、ソラハタ会計が連携先の多さで選ばれています。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
       "brandMentioned": true,
       "brandRank": 1,
       "sentiment": "positive",
-      "mentions": [{ "entityType": "brand", "competitorId": null, "name": "ソラ会計" }]
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
+      ]
     }
   },
   {
     "id": "acct-generic-word-competitor",
-    "note": "一般名詞の取り違え：競合の「バランス」は、文中の「収支のバランス」「ワーク・ライフ・バランス」とは別物なので拾わない",
+    "note": "一般名詞の取り違え：競合の「カンタン」は、文中の「カンタンに確認」「入力もカンタン」（簡単という意味）とは別物なので拾わない",
     "input": {
-      "answerText": "収支のバランスをひと目で確認したいなら、ソラ会計のダッシュボードが便利です。経理の作業時間が減るので、ワーク・ライフ・バランスの改善にもつながります。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "収支の推移をカンタンに確認したいなら、ソラハタ会計のダッシュボードが便利です。仕訳の入力もカンタンなので、経理の作業時間が減ります。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "balance", "name": "バランス", "aliases": ["Balance"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "kantan",
+          "name": "カンタン",
+          "aliases": ["Kantan"]
+        }
       ]
     },
     "expected": {
       "brandMentioned": true,
       "brandRank": 1,
       "sentiment": "positive",
-      "mentions": [{ "entityType": "brand", "competitorId": null, "name": "ソラ会計" }]
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
+      ]
     }
   },
   {
     "id": "acct-similar-name-other-product",
-    "note": "似た名前の取り違え：「ホシゾラ給与」は登録済みの「ホシゾラ帳簿」（別名「ホシゾラ」）とは別の製品なので、競合ではなく未登録として数える",
+    "note": "似た名前の取り違え：「ホシツグミ給与」は登録済みの「ホシツグミ帳簿」（別名「ホシツグミ」）とは別の製品なので、競合ではなく未登録として数える",
     "input": {
-      "answerText": "給与計算ならホシゾラ給与が定番ですが、会計ソフトとしてはソラ会計とクモノス会計が人気です。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "給与計算ならホシツグミ給与が定番ですが、会計ソフトとしてはソラハタ会計とクモツムギ会計が人気です。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -254,22 +526,49 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "ホシゾラ給与" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ホシツグミ給与"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        }
       ]
     }
   },
   {
     "id": "acct-similar-name-suffix",
-    "note": "似た名前の取り違え：「ミソラ会計」は「ソラ会計」を含むが別の会社。ブランドとして拾わない",
+    "note": "似た名前の取り違え：「ミソラハタ会計」は「ソラハタ会計」を含むが別の会社。ブランドとして拾わない",
     "input": {
-      "answerText": "建設業向けなら、業界特有の勘定科目に対応したミソラ会計が使いやすいです。ナミマ経理も工事台帳の機能を追加料金で使えます。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "建設業向けなら、業界特有の勘定科目に対応したミソラハタ会計が使いやすいです。ナミヨセ経理も工事台帳の機能を追加料金で使えます。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -277,20 +576,39 @@
       "brandRank": null,
       "sentiment": null,
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "ミソラ会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ミソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        }
       ]
     }
   },
   {
     "id": "crm-similar-name-prefix",
-    "note": "似た名前の取り違え（前方一致）：「ネクサスHR」は、ブランドの別名「ネクサス」で始まるが別の製品",
+    "note": "似た名前の取り違え（前方一致）：「ネクサリオHR」は、ブランドの別名「ネクサリオ」で始まるが別の製品",
     "input": {
-      "answerText": "人事評価まで一緒に管理したいならネクサスHR、営業の管理に絞るならアオゾラセールスやLinkBoardが候補です。",
-      "brand": { "name": "ネクサスCRM", "aliases": ["Nexus CRM", "ネクサス"] },
+      "answerText": "人事評価まで一緒に管理したいならネクサリオHR、営業の管理に絞るならアオバトセールスやLinkMoriaが候補です。",
+      "brand": {
+        "name": "ネクサリオCRM",
+        "aliases": ["Nexario CRM", "ネクサリオ"]
+      },
       "competitors": [
-        { "id": "aozora-sales", "name": "アオゾラセールス", "aliases": ["Aozora Sales"] },
-        { "id": "linkboard", "name": "LinkBoard", "aliases": ["リンクボード"] }
+        {
+          "id": "aobato-sales",
+          "name": "アオバトセールス",
+          "aliases": ["Aobato Sales"]
+        },
+        {
+          "id": "linkmoria",
+          "name": "LinkMoria",
+          "aliases": ["リンクモリア"]
+        }
       ]
     },
     "expected": {
@@ -298,9 +616,21 @@
       "brandRank": null,
       "sentiment": null,
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "ネクサスHR" },
-        { "entityType": "competitor", "competitorId": "aozora-sales", "name": "アオゾラセールス" },
-        { "entityType": "competitor", "competitorId": "linkboard", "name": "LinkBoard" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ネクサリオHR"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "aobato-sales",
+          "name": "アオバトセールス"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "linkmoria",
+          "name": "LinkMoria"
+        }
       ]
     }
   },
@@ -308,12 +638,27 @@
     "id": "acct-negative",
     "note": "否定的な書かれ方（sentiment: negative）：競合を推薦したうえで、ブランドの短所を書いている",
     "input": {
-      "answerText": "おすすめはクモノス会計とナミマ経理です。どちらも動作が軽く、サポートの評判も良好です。ソラ会計は動作が重く、問い合わせへの返信も遅いという声が多いため、現時点ではおすすめしにくいです。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "おすすめはクモツムギ会計とナミヨセ経理です。どちらも動作が軽く、サポートの評判も良好です。ソラハタ会計は動作が重く、問い合わせへの返信も遅いという声が多いため、現時点ではおすすめしにくいです。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -321,21 +666,44 @@
       "brandRank": 3,
       "sentiment": "negative",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
       ]
     }
   },
   {
-    "id": "tl-negative",
+    "id": "kintai-negative",
     "note": "否定的な書かれ方（sentiment: negative）：ブランドについては短所だけが書かれている",
     "input": {
-      "answerText": "シフト制の職場なら、シフトパルが第一候補です。タイムリーフは打刻漏れの通知がなく、シフトの作成にも対応していないため、シフト制の職場には向きません。",
-      "brand": { "name": "タイムリーフ", "aliases": ["TimeLeaf"] },
+      "answerText": "シフト制の職場なら、シフトモグラが第一候補です。コヨミタイムは打刻漏れの通知がなく、シフトの作成にも対応していないため、シフト制の職場には向きません。",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
       "competitors": [
-        { "id": "kinmu-one", "name": "キンムワン", "aliases": ["KinmuOne"] },
-        { "id": "shift-pal", "name": "シフトパル", "aliases": ["ShiftPal"] }
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
       ]
     },
     "expected": {
@@ -343,8 +711,16 @@
       "brandRank": 2,
       "sentiment": "negative",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "shift-pal", "name": "シフトパル" },
-        { "entityType": "brand", "competitorId": null, "name": "タイムリーフ" }
+        {
+          "entityType": "competitor",
+          "competitorId": "shift-mogura",
+          "name": "シフトモグラ"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "コヨミタイム"
+        }
       ]
     }
   },
@@ -352,12 +728,27 @@
     "id": "acct-excluded-brand",
     "note": "推薦ではない言及：「今回の比較から外しました」。名前は回答に出ているので言及として数え、感情は neutral とする",
     "input": {
-      "answerText": "従業員10人以下の会社向けに、次の2つを比較しました。\n\n| サービス | 月額 | 特徴 |\n|---|---|---|\n| クモノス会計 | 2,980円 | 銀行連携が豊富 |\n| ナミマ経理 | 1,980円 | サポートが手厚い |\n\n※ソラ会計は法人向けのプランしかないため、今回の比較から外しました。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "従業員10人以下の会社向けに、次の2つを比較しました。\n\n| サービス | 月額 | 特徴 |\n|---|---|---|\n| クモツムギ会計 | 2,980円 | 銀行連携が豊富 |\n| ナミヨセ経理 | 1,980円 | サポートが手厚い |\n\n※ソラハタ会計は法人向けのプランしかないため、今回の比較から外しました。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -365,9 +756,21 @@
       "brandRank": 3,
       "sentiment": "neutral",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
       ]
     }
   },
@@ -375,11 +778,22 @@
     "id": "crm-excluded-competitor",
     "note": "推薦ではない言及（競合）：「提供終了が発表されているため候補に入れていない」。名前は出ているので競合として数える",
     "input": {
-      "answerText": "中小企業の営業管理には、ネクサスCRMがおすすめです。名刺の取り込みから商談の管理まで1つでできます。なお、LinkBoard は提供終了が発表されているため、今回は候補に入れていません。",
-      "brand": { "name": "ネクサスCRM", "aliases": ["Nexus CRM", "ネクサス"] },
+      "answerText": "中小企業の営業管理には、ネクサリオCRMがおすすめです。名刺の取り込みから商談の管理まで1つでできます。なお、LinkMoria は提供終了が発表されているため、今回は候補に入れていません。",
+      "brand": {
+        "name": "ネクサリオCRM",
+        "aliases": ["Nexario CRM", "ネクサリオ"]
+      },
       "competitors": [
-        { "id": "aozora-sales", "name": "アオゾラセールス", "aliases": ["Aozora Sales"] },
-        { "id": "linkboard", "name": "LinkBoard", "aliases": ["リンクボード"] }
+        {
+          "id": "aobato-sales",
+          "name": "アオバトセールス",
+          "aliases": ["Aobato Sales"]
+        },
+        {
+          "id": "linkmoria",
+          "name": "LinkMoria",
+          "aliases": ["リンクモリア"]
+        }
       ]
     },
     "expected": {
@@ -387,21 +801,44 @@
       "brandRank": 1,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "brand", "competitorId": null, "name": "ネクサスCRM" },
-        { "entityType": "competitor", "competitorId": "linkboard", "name": "LinkBoard" }
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ネクサリオCRM"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "linkmoria",
+          "name": "LinkMoria"
+        }
       ]
     }
   },
   {
     "id": "acct-url-only",
-    "note": "URL の中だけに出てくる：本文では紹介されておらず、出典の URL にブランドの別名（sorakaikei）が含まれるだけなので、言及として数えない",
+    "note": "URL の中だけに出てくる：本文では紹介されておらず、出典の URL にブランドの別名（sorahatakaikei）が含まれるだけなので、言及として数えない",
     "input": {
-      "answerText": "インボイス制度に対応した会計ソフトなら、クモノス会計とナミマ経理が定番です。\n\n出典：\n- https://sorakaikei.example.jp/blog/invoice-guide\n- https://kumonos.example.com/news/2026",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "インボイス制度に対応した会計ソフトなら、クモツムギ会計とナミヨセ経理が定番です。\n\n出典：\n- https://sorahatakaikei.example.jp/blog/invoice-guide\n- https://kumotsumugi.example.com/news/2026",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -409,8 +846,16 @@
       "brandRank": null,
       "sentiment": null,
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "ナミマ経理" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        }
       ]
     }
   },
@@ -418,12 +863,27 @@
     "id": "acct-citation-title-only",
     "note": "出典の中だけに出てくる：出典の記事タイトルにブランド名があるだけで、本文では紹介されていないので、言及として数えない",
     "input": {
-      "answerText": "電子帳簿保存法では、電子で受け取った請求書を電子のまま保存する必要があります。保存の方法は社内で決めておきましょう。\n\n[1] 「電子帳簿保存法のポイント」ソラ会計 公式ブログ",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "電子帳簿保存法では、電子で受け取った請求書を電子のまま保存する必要があります。保存の方法は社内で決めておきましょう。\n\n[1] 「電子帳簿保存法のポイント」ソラハタ会計 公式ブログ",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -437,12 +897,27 @@
     "id": "acct-unknown-mixed",
     "note": "登録されていない会社（unknown）が混ざっている：未登録の会社も順位に数えるので、ブランドは3位",
     "input": {
-      "answerText": "おすすめの会計ソフトは次の4つです。\n\n1. ミドリ帳簿：個人事業主に特化していて、料金が安い\n2. クモノス会計：銀行連携が豊富\n3. ソラ会計：請求書の作成から入金の確認までまとめてできる\n4. ポケットレジャー：レシートを撮影するだけで記帳できる",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "おすすめの会計ソフトは次の4つです。\n\n1. ミドリカエデ帳簿：個人事業主に特化していて、料金が安い\n2. クモツムギ会計：銀行連携が豊富\n3. ソラハタ会計：請求書の作成から入金の確認までまとめてできる\n4. ポケットタヌキ：レシートを撮影するだけで記帳できる",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -450,22 +925,49 @@
       "brandRank": 3,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "ミドリ帳簿" },
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "クモノス会計" },
-        { "entityType": "brand", "competitorId": null, "name": "ソラ会計" },
-        { "entityType": "unknown", "competitorId": null, "name": "ポケットレジャー" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ミドリカエデ帳簿"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ポケットタヌキ"
+        }
       ]
     }
   },
   {
-    "id": "tl-unknown-mixed",
+    "id": "kintai-unknown-mixed",
     "note": "登録されていない会社（unknown）が混ざっている：未登録の会社が先頭に来る",
     "input": {
-      "answerText": "勤怠管理なら、ハヤテ勤怠、タイムリーフ、キンムワンの3つがよく比較されます。ハヤテ勤怠は顔認証での打刻、タイムリーフは有給休暇の自動計算、キンムワンは給与ソフトとの連携に強みがあります。",
-      "brand": { "name": "タイムリーフ", "aliases": ["TimeLeaf"] },
+      "answerText": "勤怠管理なら、ハヤブサメ勤怠、コヨミタイム、ツトメボシの3つがよく比較されます。ハヤブサメ勤怠は顔認証での打刻、コヨミタイムは有給休暇の自動計算、ツトメボシは給与ソフトとの連携に強みがあります。",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
       "competitors": [
-        { "id": "kinmu-one", "name": "キンムワン", "aliases": ["KinmuOne"] },
-        { "id": "shift-pal", "name": "シフトパル", "aliases": ["ShiftPal"] }
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
       ]
     },
     "expected": {
@@ -473,21 +975,44 @@
       "brandRank": 2,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "ハヤテ勤怠" },
-        { "entityType": "brand", "competitorId": null, "name": "タイムリーフ" },
-        { "entityType": "competitor", "competitorId": "kinmu-one", "name": "キンムワン" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "ハヤブサメ勤怠"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "コヨミタイム"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "tsutomeboshi",
+          "name": "ツトメボシ"
+        }
       ]
     }
   },
   {
     "id": "travel-prose-katakana-alias",
-    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayKit が「ステイキット」と書かれている。普通の文章での言及",
+    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayFennel が「ステイフェンネル」と書かれている。普通の文章での言及",
     "input": {
-      "answerText": "温泉旅館を探すならヤドナビが便利です。直前の予約で安く泊まりたいならステイキットのタイムセールもチェックしましょう。口コミの数ではたびまくらが一番多いので、迷ったら比べてみてください。",
-      "brand": { "name": "たびまくら", "aliases": ["Tabimakura"] },
+      "answerText": "温泉旅館を探すならヤドホタルが便利です。直前の予約で安く泊まりたいならステイフェンネルのタイムセールもチェックしましょう。口コミの数ではたびねどこが一番多いので、迷ったら比べてみてください。",
+      "brand": {
+        "name": "たびねどこ",
+        "aliases": ["Tabinedoko"]
+      },
       "competitors": [
-        { "id": "yadonavi", "name": "ヤドナビ", "aliases": ["YadoNavi"] },
-        { "id": "stay-kit", "name": "StayKit", "aliases": ["ステイキット"] }
+        {
+          "id": "yado-hotaru",
+          "name": "ヤドホタル",
+          "aliases": ["YadoHotaru"]
+        },
+        {
+          "id": "stay-fennel",
+          "name": "StayFennel",
+          "aliases": ["ステイフェンネル"]
+        }
       ]
     },
     "expected": {
@@ -495,9 +1020,21 @@
       "brandRank": 3,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "yadonavi", "name": "ヤドナビ" },
-        { "entityType": "competitor", "competitorId": "stay-kit", "name": "ステイキット" },
-        { "entityType": "brand", "competitorId": null, "name": "たびまくら" }
+        {
+          "entityType": "competitor",
+          "competitorId": "yado-hotaru",
+          "name": "ヤドホタル"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "stay-fennel",
+          "name": "ステイフェンネル"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "たびねどこ"
+        }
       ]
     }
   },
@@ -505,11 +1042,22 @@
     "id": "travel-unknown-only",
     "note": "ブランドも競合も出てこず、登録されていない会社（unknown）だけが出てくる",
     "input": {
-      "answerText": "海外のホテルを予約するなら、トリップノートかワールドステイが使いやすいです。どちらも日本語のサポートがあります。",
-      "brand": { "name": "たびまくら", "aliases": ["Tabimakura"] },
+      "answerText": "海外のホテルを予約するなら、トリップカモメかセカイヤドリギが使いやすいです。どちらも日本語のサポートがあります。",
+      "brand": {
+        "name": "たびねどこ",
+        "aliases": ["Tabinedoko"]
+      },
       "competitors": [
-        { "id": "yadonavi", "name": "ヤドナビ", "aliases": ["YadoNavi"] },
-        { "id": "stay-kit", "name": "StayKit", "aliases": ["ステイキット"] }
+        {
+          "id": "yado-hotaru",
+          "name": "ヤドホタル",
+          "aliases": ["YadoHotaru"]
+        },
+        {
+          "id": "stay-fennel",
+          "name": "StayFennel",
+          "aliases": ["ステイフェンネル"]
+        }
       ]
     },
     "expected": {
@@ -517,20 +1065,39 @@
       "brandRank": null,
       "sentiment": null,
       "mentions": [
-        { "entityType": "unknown", "competitorId": null, "name": "トリップノート" },
-        { "entityType": "unknown", "competitorId": null, "name": "ワールドステイ" }
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "トリップカモメ"
+        },
+        {
+          "entityType": "unknown",
+          "competitorId": null,
+          "name": "セカイヤドリギ"
+        }
       ]
     }
   },
   {
     "id": "crm-alias-both-forms",
-    "note": "同じ会社がカタカナと英字の両方で出てくる：「リンクボード（LinkBoard）」は1社として数える。番号付きリストの3位にブランド",
+    "note": "同じ会社がカタカナと英字の両方で出てくる：「リンクモリア（LinkMoria）」は1社として数える。番号付きリストの3位にブランド",
     "input": {
-      "answerText": "1. アオゾラセールス：見込み客の管理が得意\n2. リンクボード（LinkBoard）：チャットツールとの連携が豊富\n3. ネクサスCRM：名刺の取り込みが正確",
-      "brand": { "name": "ネクサスCRM", "aliases": ["Nexus CRM", "ネクサス"] },
+      "answerText": "1. アオバトセールス：見込み客の管理が得意\n2. リンクモリア（LinkMoria）：チャットツールとの連携が豊富\n3. ネクサリオCRM：名刺の取り込みが正確",
+      "brand": {
+        "name": "ネクサリオCRM",
+        "aliases": ["Nexario CRM", "ネクサリオ"]
+      },
       "competitors": [
-        { "id": "aozora-sales", "name": "アオゾラセールス", "aliases": ["Aozora Sales"] },
-        { "id": "linkboard", "name": "LinkBoard", "aliases": ["リンクボード"] }
+        {
+          "id": "aobato-sales",
+          "name": "アオバトセールス",
+          "aliases": ["Aobato Sales"]
+        },
+        {
+          "id": "linkmoria",
+          "name": "LinkMoria",
+          "aliases": ["リンクモリア"]
+        }
       ]
     },
     "expected": {
@@ -538,31 +1105,66 @@
       "brandRank": 3,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "aozora-sales", "name": "アオゾラセールス" },
-        { "entityType": "competitor", "competitorId": "linkboard", "name": "リンクボード" },
-        { "entityType": "brand", "competitorId": null, "name": "ネクサスCRM" }
+        {
+          "entityType": "competitor",
+          "competitorId": "aobato-sales",
+          "name": "アオバトセールス"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "linkmoria",
+          "name": "リンクモリア"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ネクサリオCRM"
+        }
       ]
     }
   },
   {
-    "id": "tl-table",
-    "note": "表の中で2位に、別名（TimeLeaf）で出てくる",
+    "id": "kintai-table",
+    "note": "表の中で2位に、別名（KoyomiTime）で出てくる。機能を並べているだけなので、感情は neutral",
     "input": {
-      "answerText": "| 順位 | サービス | 特徴 |\n|---|---|---|\n| 1 | キンムワン | 給与ソフトとの連携 |\n| 2 | TimeLeaf | 有給休暇の自動計算 |\n| 3 | シフトパル | シフトの自動作成 |",
-      "brand": { "name": "タイムリーフ", "aliases": ["TimeLeaf"] },
+      "answerText": "| 順位 | サービス | 特徴 |\n|---|---|---|\n| 1 | ツトメボシ | 給与ソフトとの連携 |\n| 2 | KoyomiTime | 有給休暇の自動計算 |\n| 3 | シフトモグラ | シフトの自動作成 |",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
       "competitors": [
-        { "id": "kinmu-one", "name": "キンムワン", "aliases": ["KinmuOne"] },
-        { "id": "shift-pal", "name": "シフトパル", "aliases": ["ShiftPal"] }
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
       ]
     },
     "expected": {
       "brandMentioned": true,
       "brandRank": 2,
-      "sentiment": "positive",
+      "sentiment": "neutral",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kinmu-one", "name": "キンムワン" },
-        { "entityType": "brand", "competitorId": null, "name": "TimeLeaf" },
-        { "entityType": "competitor", "competitorId": "shift-pal", "name": "シフトパル" }
+        {
+          "entityType": "competitor",
+          "competitorId": "tsutomeboshi",
+          "name": "ツトメボシ"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "KoyomiTime"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "shift-mogura",
+          "name": "シフトモグラ"
+        }
       ]
     }
   },
@@ -571,11 +1173,26 @@
     "note": "会社名が1つも出てこない一般的な説明。一般名詞（会計ソフト・インボイス制度など）を拾わない",
     "input": {
       "answerText": "会計ソフトを選ぶときは、①銀行口座やクレジットカードと連携できるか、②インボイス制度や電子帳簿保存法に対応しているか、③税理士と共有できるか、の3点を確認しましょう。",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -589,11 +1206,22 @@
     "id": "crm-mixed-neutral",
     "note": "長所と短所の両方が書かれている。感情は neutral とする",
     "input": {
-      "answerText": "ネクサスCRMは機能が非常に多い一方で、料金は他社より高めです。機能の多さを生かせる会社には向いていますが、小さなチームではアオゾラセールスのほうが使いやすいかもしれません。",
-      "brand": { "name": "ネクサスCRM", "aliases": ["Nexus CRM", "ネクサス"] },
+      "answerText": "ネクサリオCRMは機能が非常に多い一方で、料金は他社より高めです。機能の多さを生かせる会社には向いていますが、小さなチームではアオバトセールスのほうが使いやすいかもしれません。",
+      "brand": {
+        "name": "ネクサリオCRM",
+        "aliases": ["Nexario CRM", "ネクサリオ"]
+      },
       "competitors": [
-        { "id": "aozora-sales", "name": "アオゾラセールス", "aliases": ["Aozora Sales"] },
-        { "id": "linkboard", "name": "LinkBoard", "aliases": ["リンクボード"] }
+        {
+          "id": "aobato-sales",
+          "name": "アオバトセールス",
+          "aliases": ["Aobato Sales"]
+        },
+        {
+          "id": "linkmoria",
+          "name": "LinkMoria",
+          "aliases": ["リンクモリア"]
+        }
       ]
     },
     "expected": {
@@ -601,39 +1229,79 @@
       "brandRank": 1,
       "sentiment": "neutral",
       "mentions": [
-        { "entityType": "brand", "competitorId": null, "name": "ネクサスCRM" },
-        { "entityType": "competitor", "competitorId": "aozora-sales", "name": "アオゾラセールス" }
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ネクサリオCRM"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "aobato-sales",
+          "name": "アオバトセールス"
+        }
       ]
     }
   },
   {
-    "id": "tl-halfwidth-katakana",
-    "note": "別名（半角カタカナ）で出てくる：ﾀｲﾑﾘｰﾌ",
+    "id": "kintai-halfwidth-katakana",
+    "note": "別名（半角カタカナ）で出てくる：ｺﾖﾐﾀｲﾑ",
     "input": {
-      "answerText": "小売店のアルバイトの勤怠なら、ﾀｲﾑﾘｰﾌが手軽です。タブレット1台で打刻できます。",
-      "brand": { "name": "タイムリーフ", "aliases": ["TimeLeaf"] },
+      "answerText": "小売店のアルバイトの勤怠なら、ｺﾖﾐﾀｲﾑが手軽です。タブレット1台で打刻できます。",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
       "competitors": [
-        { "id": "kinmu-one", "name": "キンムワン", "aliases": ["KinmuOne"] },
-        { "id": "shift-pal", "name": "シフトパル", "aliases": ["ShiftPal"] }
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
       ]
     },
     "expected": {
       "brandMentioned": true,
       "brandRank": 1,
       "sentiment": "positive",
-      "mentions": [{ "entityType": "brand", "competitorId": null, "name": "ﾀｲﾑﾘｰﾌ" }]
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ｺﾖﾐﾀｲﾑ"
+        }
+      ]
     }
   },
   {
     "id": "acct-english-answer",
-    "note": "英語の回答。別名を大文字・小文字の違いを無視して照合する（KUMONOS、Namima、Sora Kaikei）",
+    "note": "英語の回答。別名を大文字・小文字の違いを無視して照合する（KUMOTSUMUGI、Namiyose、Sorahata Kaikei）",
     "input": {
-      "answerText": "For small businesses in Japan, popular options include KUMONOS for its bank integrations, Namima for its customer support, and Sora Kaikei for its simple invoicing.",
-      "brand": { "name": "ソラ会計", "aliases": ["Sora Kaikei", "SORA会計"] },
+      "answerText": "For small businesses in Japan, popular options include KUMOTSUMUGI for its bank integrations, Namiyose for its customer support, and Sorahata Kaikei for its simple invoicing.",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
       "competitors": [
-        { "id": "kumonos", "name": "クモノス会計", "aliases": ["Kumonos"] },
-        { "id": "hoshizora", "name": "ホシゾラ帳簿", "aliases": ["Hoshizora", "ホシゾラ"] },
-        { "id": "namima", "name": "ナミマ経理", "aliases": ["Namima"] }
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
       ]
     },
     "expected": {
@@ -641,9 +1309,336 @@
       "brandRank": 3,
       "sentiment": "positive",
       "mentions": [
-        { "entityType": "competitor", "competitorId": "kumonos", "name": "KUMONOS" },
-        { "entityType": "competitor", "competitorId": "namima", "name": "Namima" },
-        { "entityType": "brand", "competitorId": null, "name": "Sora Kaikei" }
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "KUMOTSUMUGI"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "Namiyose"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "Sorahata Kaikei"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acct-negative-explicit",
+    "note": "否定的な書かれ方（はっきりした否定）：「避けたほうが無難」と書いている",
+    "input": {
+      "answerText": "ソラハタ会計は料金体系が分かりにくく、解約したあとに過去のデータを書き出せないため、これから導入するなら避けたほうが無難です。代わりにクモツムギ会計かナミヨセ経理を検討してください。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
+      "competitors": [
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "negative",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acct-negative-top-rank",
+    "note": "否定的な書かれ方：番号付きリストの1位に出てくるが、内容は否定的。感情は順位ではなく本文の書き方で判断する",
+    "input": {
+      "answerText": "よく名前が挙がる会計ソフトを、注意点とあわせて紹介します。\n\n1. ソラハタ会計：知名度は高いものの、サポートの返信が遅く、初心者にはおすすめしません\n2. クモツムギ会計：銀行連携が豊富で、初めてでも設定しやすい\n3. ホシツグミ帳簿：料金が安く、個人事業主に向いている",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
+      "competitors": [
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "negative",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "hoshitsugumi",
+          "name": "ホシツグミ帳簿"
+        }
+      ]
+    }
+  },
+  {
+    "id": "kintai-negative-indirect",
+    "note": "否定的な書かれ方（遠回しな否定）：悪いとははっきり書かず、他社を選ぶよう促している",
+    "input": {
+      "answerText": "コヨミタイムも候補には入りますが、正直なところ、今から新しく導入するならツトメボシを選んだほうが後悔は少ないと思います。",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
+      "competitors": [
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "negative",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "コヨミタイム"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "tsutomeboshi",
+          "name": "ツトメボシ"
+        }
+      ]
+    }
+  },
+  {
+    "id": "crm-negative-indirect",
+    "note": "否定的な書かれ方（遠回しな否定）：「以前は定番」「更新が止まっている」と、今は勧めにくいことをにおわせている",
+    "input": {
+      "answerText": "以前はネクサリオCRMが定番でしたが、ここ1年ほどは機能の更新が止まっているようです。いま選ぶなら、アオバトセールスやLinkMoriaのほうが安心でしょう。",
+      "brand": {
+        "name": "ネクサリオCRM",
+        "aliases": ["Nexario CRM", "ネクサリオ"]
+      },
+      "competitors": [
+        {
+          "id": "aobato-sales",
+          "name": "アオバトセールス",
+          "aliases": ["Aobato Sales"]
+        },
+        {
+          "id": "linkmoria",
+          "name": "LinkMoria",
+          "aliases": ["リンクモリア"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "negative",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ネクサリオCRM"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "aobato-sales",
+          "name": "アオバトセールス"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "linkmoria",
+          "name": "LinkMoria"
+        }
+      ]
+    }
+  },
+  {
+    "id": "acct-neutral-list-last",
+    "note": "デメリットを併記した中立：番号付きリストの最下位だが、長所と短所の両方が書かれている。感情は順位ではなく本文の書き方で判断する",
+    "input": {
+      "answerText": "1. クモツムギ会計：銀行連携が豊富\n2. ナミヨセ経理：サポートが手厚い\n3. ソラハタ会計：請求書の機能は充実しているが、スマホアプリが使いにくいという声もある",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
+      "competitors": [
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "hoshitsugumi",
+          "name": "ホシツグミ帳簿",
+          "aliases": ["Hoshitsugumi", "ホシツグミ"]
+        },
+        {
+          "id": "namiyose",
+          "name": "ナミヨセ経理",
+          "aliases": ["Namiyose"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 3,
+      "sentiment": "neutral",
+      "mentions": [
+        {
+          "entityType": "competitor",
+          "competitorId": "kumotsumugi",
+          "name": "クモツムギ会計"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "namiyose",
+          "name": "ナミヨセ経理"
+        },
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
+      ]
+    }
+  },
+  {
+    "id": "kintai-neutral-factual",
+    "note": "事実だけを書いた中立：料金と打刻の方法を並べているだけで、良し悪しを書いていない",
+    "input": {
+      "answerText": "コヨミタイムの料金は1人あたり月300円で、ICカードとスマホアプリでの打刻に対応しています。シフトモグラは1人あたり月400円で、顔認証での打刻にも対応しています。",
+      "brand": {
+        "name": "コヨミタイム",
+        "aliases": ["KoyomiTime"]
+      },
+      "competitors": [
+        {
+          "id": "tsutomeboshi",
+          "name": "ツトメボシ",
+          "aliases": ["Tsutomeboshi"]
+        },
+        {
+          "id": "shift-mogura",
+          "name": "シフトモグラ",
+          "aliases": ["ShiftMogura"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "neutral",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "コヨミタイム"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "shift-mogura",
+          "name": "シフトモグラ"
+        }
+      ]
+    }
+  },
+  {
+    "id": "travel-neutral-pros-cons",
+    "note": "デメリットを併記した中立：掲載数の多さ（長所）とキャンセル料の条件の分かりにくさ（短所）を並べている",
+    "input": {
+      "answerText": "たびねどこは掲載されている宿の数が多い反面、キャンセル料の条件が宿ごとに違うので、予約の前に確認が必要です。ヤドホタルは掲載数こそ少ないものの、キャンセル料の条件が統一されています。",
+      "brand": {
+        "name": "たびねどこ",
+        "aliases": ["Tabinedoko"]
+      },
+      "competitors": [
+        {
+          "id": "yado-hotaru",
+          "name": "ヤドホタル",
+          "aliases": ["YadoHotaru"]
+        },
+        {
+          "id": "stay-fennel",
+          "name": "StayFennel",
+          "aliases": ["ステイフェンネル"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "neutral",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "たびねどこ"
+        },
+        {
+          "entityType": "competitor",
+          "competitorId": "yado-hotaru",
+          "name": "ヤドホタル"
+        }
       ]
     }
   }

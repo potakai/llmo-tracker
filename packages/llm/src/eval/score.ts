@@ -31,10 +31,8 @@ export type SetComparison = {
 export type CaseScore = {
   brandMentioned: boolean
   brandRank: boolean
-  /** 正解でブランドが出てこないケースは対象外（null） */
+  /** 正解でブランドが出てこないケースと、感情を採点しない抽出器では対象外（null） */
   sentiment: boolean | null
-  /** 抽出器が sentiment を返したか（null 以外）。1件も返さない抽出器は、感情の正解率を対象外にする */
-  sentimentReturned: boolean
   registered: SetComparison
   /** 両方に出てくる登録済みの会社が1つ以下なら対象外（null） */
   order: boolean | null
@@ -55,12 +53,20 @@ export type PrecisionRecall = {
   f1: number | null
 }
 
+/**
+ * 採点のしかた。感情を採点するかは、評価結果ではなく抽出器の仕様で決める
+ * （ルールベースは感情を返さない仕様なので採点しない。LLM は返す仕様なので、null も不正解として採点する）
+ */
+export type ScoreOptions = { scoreSentiment: boolean }
+
 export type EvalMetrics = {
   caseCount: number
+  /** 感情を採点したか（false なら感情の正解率は null で、全問正解の判定にも感情を含めない） */
+  sentimentScored: boolean
   passedCount: number
   brandMentionAccuracy: Ratio
   brandRankAccuracy: Ratio
-  /** 抽出器が sentiment を一度も返さなかったときは null（対象外。0% とは区別する） */
+  /** 感情を採点しない抽出器では null（対象外。0% とは区別する） */
   sentimentAccuracy: Ratio | null
   registered: PrecisionRecall
   orderAccuracy: Ratio
@@ -108,13 +114,12 @@ function compareOrder(expected: readonly string[], actual: readonly string[]): b
 }
 
 /** 抽出に失敗したケース。すべての判定を不正解として数える */
-function scoreFailure(expected: ExpectedExtraction): CaseScore {
+function scoreFailure(expected: ExpectedExtraction, options: ScoreOptions): CaseScore {
   const registered = registeredKeys(expected.mentions)
   return {
     brandMentioned: false,
     brandRank: false,
-    sentiment: expected.brandMentioned ? false : null,
-    sentimentReturned: false,
+    sentiment: options.scoreSentiment && expected.brandMentioned ? false : null,
     registered: compareSets(registered, []),
     order: registered.length >= MIN_COMMON_FOR_ORDER ? false : null,
     unknown: compareSets(unknownKeys(expected.mentions), []),
@@ -126,8 +131,9 @@ function scoreFailure(expected: ExpectedExtraction): CaseScore {
 export function scoreCase(
   expected: ExpectedExtraction,
   actual: ActualExtraction | null,
+  options: ScoreOptions,
 ): CaseScore {
-  if (actual === null) return scoreFailure(expected)
+  if (actual === null) return scoreFailure(expected, options)
 
   const expectedRegistered = registeredKeys(expected.mentions)
   const actualRegistered = registeredKeys(actual.mentions)
@@ -135,8 +141,11 @@ export function scoreCase(
   const score = {
     brandMentioned: expected.brandMentioned === actual.brandMentioned,
     brandRank: expected.brandRank === actual.brandRank,
-    sentiment: expected.brandMentioned ? expected.sentiment === actual.sentiment : null,
-    sentimentReturned: actual.sentiment !== null,
+    // 正解でブランドが言及されているケースが対象。抽出器が null を返したら不正解
+    sentiment:
+      options.scoreSentiment && expected.brandMentioned
+        ? expected.sentiment === actual.sentiment
+        : null,
     registered,
     order: compareOrder(expectedRegistered, actualRegistered),
     unknown: compareSets(unknownKeys(expected.mentions), unknownKeys(actual.mentions)),
@@ -145,7 +154,7 @@ export function scoreCase(
 }
 
 /** 未登録の会社以外の判定がすべて正解か（対象外の判定は見ない） */
-function isPassed(score: Omit<CaseScore, 'passed' | 'unknown' | 'sentimentReturned'>): boolean {
+function isPassed(score: Omit<CaseScore, 'passed' | 'unknown'>): boolean {
   return (
     score.brandMentioned &&
     score.brandRank &&
@@ -156,20 +165,12 @@ function isPassed(score: Omit<CaseScore, 'passed' | 'unknown' | 'sentimentReturn
   )
 }
 
-/**
- * 全ケースを採点する。抽出器が sentiment を一度も返さなかったとき（ルールベースなど）は、
- * 感情を測れないので、各ケースの感情を対象外（null）にし、正否の判定からも外す。
- * 感情の正解率が対象外（aggregateScores で null）になるのと揃える。
- */
+/** 全ケースを採点する */
 export function scoreCases(
   items: readonly { expected: ExpectedExtraction; actual: ActualExtraction | null }[],
+  options: ScoreOptions,
 ): CaseScore[] {
-  const scores = items.map(({ expected, actual }) => scoreCase(expected, actual))
-  if (scores.some((s) => s.sentimentReturned)) return scores
-  return scores.map((s) => {
-    const withoutSentiment = { ...s, sentiment: null }
-    return { ...withoutSentiment, passed: isPassed(withoutSentiment) }
-  })
+  return items.map(({ expected, actual }) => scoreCase(expected, actual, options))
 }
 
 function ratio(values: readonly (boolean | null)[]): Ratio {
@@ -192,23 +193,21 @@ function precisionRecall(comparisons: readonly SetComparison[]): PrecisionRecall
     truePositives + falsePositives > 0 ? truePositives / (truePositives + falsePositives) : null
   const recall =
     truePositives + falseNegatives > 0 ? truePositives / (truePositives + falseNegatives) : null
-  const f1 =
-    precision !== null && recall !== null && precision + recall > 0
-      ? (2 * precision * recall) / (precision + recall)
-      : null
+  // 2TP / (2TP + FP + FN)。1つも当たらなければ 0。分母が 0（正解も抽出結果も空）のときだけ null
+  const f1Denominator = 2 * truePositives + falsePositives + falseNegatives
+  const f1 = f1Denominator > 0 ? (2 * truePositives) / f1Denominator : null
   return { truePositives, falsePositives, falseNegatives, precision, recall, f1 }
 }
 
 /** 全体の集計。適合率・再現率は全ケースの件数を合計してから計算する（マイクロ平均） */
-export function aggregateScores(scores: readonly CaseScore[]): EvalMetrics {
+export function aggregateScores(scores: readonly CaseScore[], options: ScoreOptions): EvalMetrics {
   return {
     caseCount: scores.length,
+    sentimentScored: options.scoreSentiment,
     passedCount: scores.filter((s) => s.passed).length,
     brandMentionAccuracy: ratio(scores.map((s) => s.brandMentioned)),
     brandRankAccuracy: ratio(scores.map((s) => s.brandRank)),
-    sentimentAccuracy: scores.some((s) => s.sentimentReturned)
-      ? ratio(scores.map((s) => s.sentiment))
-      : null,
+    sentimentAccuracy: options.scoreSentiment ? ratio(scores.map((s) => s.sentiment)) : null,
     registered: precisionRecall(scores.map((s) => s.registered)),
     orderAccuracy: ratio(scores.map((s) => s.order)),
     unknown: precisionRecall(scores.map((s) => s.unknown)),

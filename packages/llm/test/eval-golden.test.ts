@@ -9,17 +9,17 @@ const validCase = (): GoldenCase => ({
   id: 'sample',
   note: 'サンプル',
   input: {
-    answerText: 'ソラ会計とクモノス会計がおすすめです',
-    brand: { name: 'ソラ会計', aliases: [] },
-    competitors: [{ id: 'kumonos', name: 'クモノス会計', aliases: [] }],
+    answerText: 'ソラハタ会計とクモツムギ会計がおすすめです',
+    brand: { name: 'ソラハタ会計', aliases: [] },
+    competitors: [{ id: 'kumotsumugi', name: 'クモツムギ会計', aliases: [] }],
   },
   expected: {
     brandMentioned: true,
     brandRank: 1,
     sentiment: 'positive',
     mentions: [
-      { entityType: 'brand', competitorId: null, name: 'ソラ会計' },
-      { entityType: 'competitor', competitorId: 'kumonos', name: 'クモノス会計' },
+      { entityType: 'brand', competitorId: null, name: 'ソラハタ会計' },
+      { entityType: 'competitor', competitorId: 'kumotsumugi', name: 'クモツムギ会計' },
     ],
   },
 })
@@ -70,7 +70,7 @@ describe('ゴールデンセットのスキーマ', () => {
         ...c.expected,
         mentions: [
           c.expected.mentions[0]!,
-          { entityType: 'competitor', competitorId: 'no-such-id', name: 'クモノス会計' },
+          { entityType: 'competitor', competitorId: 'no-such-id', name: 'クモツムギ会計' },
         ],
       },
     }
@@ -125,7 +125,7 @@ describe('ゴールデンセットのスキーマ', () => {
       expected: {
         ...c.expected,
         mentions: [
-          { entityType: 'unknown', competitorId: 'kumonos', name: 'ミドリ帳簿' },
+          { entityType: 'unknown', competitorId: 'kumotsumugi', name: 'ミドリカエデ帳簿' },
           ...c.expected.mentions,
         ],
         brandRank: 2,

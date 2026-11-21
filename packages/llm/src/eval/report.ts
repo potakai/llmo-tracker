@@ -39,7 +39,7 @@ function precisionRows(label: string, pr: PrecisionRecall, withF1: boolean): str
 }
 
 const SENTIMENT_EXCLUDED_NOTE =
-  '※ 抽出器が感情を返さないので、全問正解の判定に感情を含めていない（感情の正解率も対象外）'
+  '※ この抽出器は感情を返さないので、全問正解の判定に感情を含めていない（感情の正解率も対象外）'
 
 function formatMetrics(m: EvalMetrics): string {
   const rows = [
@@ -48,14 +48,14 @@ function formatMetrics(m: EvalMetrics): string {
     `| 全問正解のケース | ${percent(m.caseCount > 0 ? m.passedCount / m.caseCount : null)} | ${m.passedCount} / ${m.caseCount} |`,
     ratioRow('ブランド言及の正解率', m.brandMentionAccuracy),
     ratioRow('ブランド順位の正解率', m.brandRankAccuracy),
-    m.sentimentAccuracy
+    m.sentimentScored && m.sentimentAccuracy
       ? ratioRow('感情の正解率', m.sentimentAccuracy)
-      : '| 感情の正解率 | — | 対象外（抽出器が感情を返さない） |',
+      : '| 感情の正解率 | — | 対象外（この抽出器は感情を返さない） |',
     ...precisionRows('登録済みの会社', m.registered, true),
     ratioRow('登録済みの会社の順序一致率', m.orderAccuracy),
     ...precisionRows('未登録の会社（参考）', m.unknown, false),
   ].join('\n')
-  return m.sentimentAccuracy === null ? `${rows}\n\n${SENTIMENT_EXCLUDED_NOTE}` : rows
+  return m.sentimentScored ? rows : `${rows}\n\n${SENTIMENT_EXCLUDED_NOTE}`
 }
 
 type Mention = ExpectedExtraction['mentions'][number]
@@ -118,6 +118,11 @@ function isSentimentOnlyFailure(c: ReportCase): boolean {
   return c.error === null && checks.length === 1 && checks[0] === '感情'
 }
 
+/** 例：acct-prose（positive → null） */
+function sentimentDiff(c: ReportCase): string {
+  return `${c.id}（${c.expected.sentiment ?? 'null'} → ${c.actual?.sentiment ?? 'null'}）`
+}
+
 function formatFailures(failures: readonly ReportCase[]): string[] {
   if (failures.length === 0) return ['（なし）']
   const sentimentOnly = failures.filter(isSentimentOnlyFailure)
@@ -126,7 +131,7 @@ function formatFailures(failures: readonly ReportCase[]): string[] {
     ...others.map((c) => `${formatFailure(c)}\n`),
     ...(sentimentOnly.length > 0
       ? [
-          `感情だけが外れたケース（${sentimentOnly.length} 件）: ${sentimentOnly.map((c) => c.id).join(', ')}`,
+          `感情だけが外れたケース（${sentimentOnly.length} 件）: ${sentimentOnly.map(sentimentDiff).join(', ')}`,
         ]
       : []),
   ]

@@ -3,21 +3,21 @@ import { describe, expect, it } from 'vitest'
 import { createLlmExtractor, createRuleBasedExtractor, type Extractor } from '../src'
 import { type GoldenCase, loadGoldenSet } from '../src/eval/golden'
 import { runExtraction } from '../src/eval/run'
-import { aggregateScores, scoreCase } from '../src/eval/score'
+import { aggregateScores, scoreCases } from '../src/eval/score'
 
 const caseOf = (id: string): GoldenCase => ({
   id,
   note: 'テスト用',
   input: {
-    answerText: `${id}：ソラ会計がおすすめです`,
-    brand: { name: 'ソラ会計', aliases: [] },
+    answerText: `${id}：ソラハタ会計がおすすめです`,
+    brand: { name: 'ソラハタ会計', aliases: [] },
     competitors: [],
   },
   expected: {
     brandMentioned: true,
     brandRank: 1,
     sentiment: 'positive',
-    mentions: [{ entityType: 'brand', competitorId: null, name: 'ソラ会計' }],
+    mentions: [{ entityType: 'brand', competitorId: null, name: 'ソラハタ会計' }],
   },
 })
 
@@ -30,8 +30,16 @@ describe('抽出の実行', () => {
 
     // Act
     const outcomes = await runExtraction(cases, createRuleBasedExtractor(), OPTIONS)
+    const options = { scoreSentiment: false }
     const metrics = aggregateScores(
-      outcomes.map((o, i) => scoreCase(cases[i]!.expected, o.error ? null : o.result)),
+      scoreCases(
+        outcomes.map((o, i) => ({
+          expected: cases[i]!.expected,
+          actual: o.error ? null : o.result,
+        })),
+        options,
+      ),
+      options,
     )
 
     // Assert

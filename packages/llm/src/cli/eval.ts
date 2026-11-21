@@ -46,7 +46,10 @@ function summarizeUsage(usage: UsageTracker | null, modelId: string): ReportUsag
 
 async function main(): Promise<void> {
   const args = parseEvalArgs(process.argv.slice(2))
-  const { extractor, modelId, usage } = createEvalExtractor(args.extractor, process.env)
+  const { extractor, modelId, usage, scoreOptions } = createEvalExtractor(
+    args.extractor,
+    process.env,
+  )
 
   const allCases = await loadGoldenSet()
   const cases = args.only ? allCases.filter((c) => c.id === args.only) : allCases
@@ -63,17 +66,21 @@ async function main(): Promise<void> {
     const outcome = outcomes[i]
     return outcome ? [{ c, outcome }] : []
   })
-  // 感情を返さない抽出器なら、感情は正否の判定から外れる（scoreCases を参照）
+  // 感情を採点するかは抽出器の仕様で決める（rule は採点しない、llm は採点する）
   const scores = scoreCases(
     rows.map(({ c, outcome }) => ({
       expected: c.expected,
       actual: outcome.error ? null : outcome.result,
     })),
+    scoreOptions,
   )
   const reportCases = rows.map((row, i) =>
-    toReportCase(row, scores[i] ?? scoreCase(row.c.expected, null)),
+    toReportCase(row, scores[i] ?? scoreCase(row.c.expected, null, scoreOptions)),
   )
-  const metrics = aggregateScores(reportCases.map((c) => c.score))
+  const metrics = aggregateScores(
+    reportCases.map((c) => c.score),
+    scoreOptions,
+  )
   const reportUsage = summarizeUsage(usage, modelId)
   console.log(
     formatReport({

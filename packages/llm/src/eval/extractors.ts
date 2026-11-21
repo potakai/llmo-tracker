@@ -4,6 +4,7 @@ import { createRuleBasedExtractor } from '../extract/rule-based'
 import type { Extractor } from '../extract/types'
 import { extractorModelFromEnv } from '../index'
 import type { ExtractorKind } from './args'
+import type { ScoreOptions } from './score'
 import { createUsageTracker, type UsageTracker } from './usage'
 
 export type EvalExtractor = {
@@ -11,6 +12,8 @@ export type EvalExtractor = {
   modelId: string
   /** LLM のときだけ。使ったトークン数を数える */
   usage: UsageTracker | null
+  /** 抽出器の仕様に合わせた採点のしかた（感情を返す抽出器だけ感情を採点する） */
+  scoreOptions: ScoreOptions
 }
 
 /**
@@ -22,7 +25,13 @@ export function createEvalExtractor(
   env: Record<string, string | undefined>,
 ): EvalExtractor {
   if (kind === 'rule') {
-    return { extractor: createRuleBasedExtractor(), modelId: 'rule-based', usage: null }
+    return {
+      extractor: createRuleBasedExtractor(),
+      modelId: 'rule-based',
+      usage: null,
+      // ルールベースは感情を返さない仕様
+      scoreOptions: { scoreSentiment: false },
+    }
   }
   const apiKey = env.OPENAI_API_KEY
   if (!apiKey) {
@@ -32,5 +41,11 @@ export function createEvalExtractor(
   }
   const modelId = extractorModelFromEnv(env)
   const usage = createUsageTracker(createOpenAI({ apiKey }).responses(modelId))
-  return { extractor: createLlmExtractor({ model: usage.model, modelId }), modelId, usage }
+  return {
+    extractor: createLlmExtractor({ model: usage.model, modelId }),
+    modelId,
+    usage,
+    // LLM は感情を返す仕様。返さなかった（null）ケースや失敗したケースは不正解として数える
+    scoreOptions: { scoreSentiment: true },
+  }
 }
