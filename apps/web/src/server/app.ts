@@ -1,9 +1,17 @@
+import type { LlmMode } from '@llmo/llm'
 import { Hono } from 'hono'
 import { auth } from '@/lib/auth'
+import { getLlmPolicy } from '@/lib/llm'
 import type { AppEnv } from './context'
 import { isDemoOrganization } from './demo'
 import { errors, handleError } from './errors'
-import { blockDemoWrites, loadSession, requireAuth, requireOrg } from './middleware/auth'
+import {
+  blockDemoWrites,
+  loadSession,
+  requireAuth,
+  requireOrg,
+  resolveLlmMode,
+} from './middleware/auth'
 import { brandRoutes } from './routes/brands'
 import { createRunRoutes } from './routes/runs'
 import { settingsRoutes } from './routes/settings'
@@ -16,6 +24,11 @@ export type AppDeps = {
    * 本番では Inngest にイベントを送る（RUN_DISPATCH=inngest）
    */
   dispatchRun: (runId: string) => Promise<void> | void
+  /**
+   * 組織が本物の AI で計測しているか。省略すると LLM_MODE と LIVE_ORGANIZATION_IDS から決める
+   * （createLlmPolicy と同じ判定）。テストで live の組織を作るときに差し替える
+   */
+  llmModeFor?: (organizationId: string) => LlmMode
 }
 
 /** デモのユーザーでも使ってよい Better Auth の書き込み系（ログイン・ログアウト・別アカウントの作成） */
@@ -32,6 +45,9 @@ const AUTH_WRITES_ALLOWED_FOR_DEMO = new Set([
  * /api/brands  … ログイン済み＋組織を選択済みのときだけ通る。デモ組織は読み取りだけ
  */
 export function createApp(deps: AppDeps) {
+  const llmMode = resolveLlmMode(
+    deps.llmModeFor ?? ((organizationId) => getLlmPolicy().modeFor(organizationId)),
+  )
   return new Hono<AppEnv>()
     .basePath('/api')
     .onError(handleError)
@@ -45,8 +61,8 @@ export function createApp(deps: AppDeps) {
       return auth.handler(c.req.raw)
     })
     .get('/health', (c) => c.json({ ok: true }))
-    .use('/brands/*', loadSession, requireAuth, requireOrg, blockDemoWrites)
-    .use('/brands', loadSession, requireAuth, requireOrg, blockDemoWrites)
+    .use('/brands/*', loadSession, requireAuth, requireOrg, blockDemoWrites, llmMode)
+    .use('/brands', loadSession, requireAuth, requireOrg, blockDemoWrites, llmMode)
     .route('/brands', brandRoutes)
     .route('/brands', settingsRoutes)
     .route('/brands', createRunRoutes(deps))

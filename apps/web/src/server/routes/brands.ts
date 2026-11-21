@@ -87,7 +87,7 @@ export const brandRoutes = new Hono<OrgEnv>()
       const { days, ai, q } = c.req.valid('query')
       await findBrandInOrg(c.var.organizationId, brandId)
       return c.json({
-        metrics: await getBrandMetrics(brandId, { days, provider: ai, promptId: q }),
+        metrics: await getBrandMetrics(brandId, c.var.llmMode, { days, provider: ai, promptId: q }),
       })
     },
   )

@@ -1,3 +1,4 @@
+import { isFakeModel } from '@llmo/llm'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { formatDate, RUN_STATUS_LABEL } from '@/components/labels'
@@ -14,11 +15,12 @@ export default async function RunPage({
   params: Promise<{ brandId: string; runId: string }>
 }) {
   const raw = await params
-  const { brand } = await loadBrandForPage(raw.brandId)
+  const { brand, llmMode } = await loadBrandForPage(raw.brandId)
   const parsed = runParams.safeParse(raw)
   if (!parsed.success) notFound()
   const run = await getRunDetail(brand.id, parsed.data.runId)
   if (!run) notFound()
+  const isSample = run.responses.some((r) => isFakeModel(r.model))
 
   // 質問ごとにまとめる（並びは質問の登録順）
   const byPrompt = new Map<string, { text: string; responses: ResponseRow[] }>()
@@ -42,6 +44,13 @@ export default async function RunPage({
           {RUN_STATUS_LABEL[run.status]}。回答 {run.responses.length} 件、費用の目安 $
           {run.totalCostUsd.toFixed(2)}
         </p>
+        {isSample && (
+          <p className="mt-3 rounded-[var(--radius-box)] border border-rule bg-surface px-4 py-3 text-sm">
+            これは<strong>サンプルの AI</strong>
+            で行った計測です。ChatGPT や Gemini には実際には聞いておらず、回答は作り物です。
+            {llmMode === 'live' && '計測結果の数字には入れていません。'}
+          </p>
+        )}
         <div className="mt-4">
           <MarkLegend />
         </div>

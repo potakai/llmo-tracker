@@ -1,3 +1,4 @@
+import type { LlmMode } from '@llmo/llm'
 import Link from 'next/link'
 import { FilterBar } from '@/components/filter-bar'
 import { formatDate, PROVIDER_LABEL, percent, RUN_STATUS_LABEL } from '@/components/labels'
@@ -17,10 +18,14 @@ export default async function BrandDashboard({
   params: Promise<{ brandId: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const { brand, isDemo } = await loadBrandForPage((await params).brandId)
+  const { brand, isDemo, llmMode } = await loadBrandForPage((await params).brandId)
   const filter = parseFilter(await searchParams)
   const [metrics, runs] = await Promise.all([
-    getBrandMetrics(brand.id, { days: filter.days, provider: filter.ai, promptId: filter.q }),
+    getBrandMetrics(brand.id, llmMode, {
+      days: filter.days,
+      provider: filter.ai,
+      promptId: filter.q,
+    }),
     listRuns(brand.id, 10),
   ])
 
@@ -232,7 +237,7 @@ export default async function BrandDashboard({
         </section>
       </div>
 
-      <RunHistory brandId={brand.id} runs={runs} />
+      <RunHistory brandId={brand.id} runs={runs} llmMode={llmMode} />
 
       <p className="text-xs leading-relaxed text-ink-soft">
         数字は、API 経由で AI に質問した回答から出した定点観測の目安です。ChatGPT や Gemini
@@ -269,18 +274,26 @@ function TrendLegend({ showProviders }: { showProviders: boolean }) {
   )
 }
 
-function RunHistory({
-  brandId,
-  runs,
-}: {
+type RunHistoryProps = {
   brandId: string
   runs: Awaited<ReturnType<typeof listRuns>>
-}) {
+  llmMode: LlmMode
+}
+
+function RunHistory({ brandId, runs, llmMode }: RunHistoryProps) {
+  // live の組織にサンプルの計測が残っているとき（live にする前に計測していた）は、集計から外していることを伝える
+  const hasExcludedSamples = llmMode === 'live' && runs.some((r) => r.isSample)
   return (
     <section aria-labelledby="runs-heading">
       <h2 id="runs-heading" className="mb-3 font-bold">
         計測の履歴
       </h2>
+      {hasExcludedSamples && (
+        <p className="mb-3 text-sm text-ink-soft">
+          「サンプル」の計測は、本物の AI に切り替える前にサンプルの AI
+          で行ったものです。上の数字には入れていません（回答は「回答を見る」から確認できます）。
+        </p>
+      )}
       {runs.length === 0 ? (
         <p className="text-sm text-ink-soft">まだ計測していません。</p>
       ) : (
@@ -303,7 +316,10 @@ function RunHistory({
             <tbody className="divide-y divide-rule">
               {runs.map((r) => (
                 <tr key={r.id}>
-                  <td className="num px-4 py-2">{r.scheduledFor ?? formatDate(r.createdAt)}</td>
+                  <td className="num px-4 py-2">
+                    {r.scheduledFor ?? formatDate(r.createdAt)}
+                    {r.isSample && <SampleBadge />}
+                  </td>
                   <td className="hidden px-4 py-2 sm:table-cell">
                     {r.trigger === 'scheduled' ? '毎日の自動' : '手動'}
                   </td>
@@ -334,5 +350,13 @@ function RunHistory({
         </div>
       )}
     </section>
+  )
+}
+
+function SampleBadge() {
+  return (
+    <span className="ml-2 whitespace-nowrap rounded-sm border border-rule px-1.5 text-xs text-ink-soft">
+      サンプル
+    </span>
   )
 }

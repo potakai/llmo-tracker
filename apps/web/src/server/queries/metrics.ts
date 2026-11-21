@@ -1,7 +1,9 @@
 import { analysis, brand, citation, competitor, mention, prompt, response, run } from '@llmo/db'
+import type { LlmMode } from '@llmo/llm'
 import { and, asc, desc, eq, gte, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { addDays, todayInTokyo, wilsonInterval } from '@/lib/stats'
+import { countedResponses } from './sample-responses'
 
 /** run が「いつの計測か」：自動実行は対象日、手動実行は作成日（日本時間） */
 const runDate = sql<string>`coalesce(${run.scheduledFor}, (${run.createdAt} at time zone 'Asia/Tokyo')::date)::text`
@@ -37,8 +39,14 @@ export type MetricsFilter = {
  * - shareOfVoice: 直近 window 日の、名前ごとの言及率（自社・競合・未登録）
  * - topDomains: 直近 window 日に引用されたドメインの上位
  * - byPrompt: 直近 window 日の、質問ごとの言及率
+ *
+ * llmMode が live なら、サンプルの AI（fake）の回答はどの数字にも入れない。
  */
-export async function getBrandMetrics(brandId: string, filter: MetricsFilter = {}) {
+export async function getBrandMetrics(
+  brandId: string,
+  llmMode: LlmMode,
+  filter: MetricsFilter = {},
+) {
   const days = filter.days ?? 30
   const window = filter.window ?? 7
   const today = filter.today ?? todayInTokyo()
@@ -46,6 +54,8 @@ export async function getBrandMetrics(brandId: string, filter: MetricsFilter = {
   const windowFrom = addDays(today, -(window - 1))
 
   const narrowing: SQL[] = []
+  const counted = countedResponses(llmMode)
+  if (counted) narrowing.push(counted)
   if (filter.provider) narrowing.push(eq(response.provider, filter.provider))
   if (filter.promptId) narrowing.push(eq(response.promptId, filter.promptId))
 

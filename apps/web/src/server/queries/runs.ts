@@ -1,8 +1,12 @@
 import { citation, mention, response, run } from '@llmo/db'
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
+import { isFakeResponse } from './sample-responses'
 
-/** ブランドの実行一覧（新しい順。回答の成功・失敗の数つき） */
+/**
+ * ブランドの実行一覧（新しい順。回答の成功・失敗の数つき）。
+ * サンプルの AI（fake）で行った計測には isSample が付く（集計から外すかどうかは見る側の組織で決まる）
+ */
 export async function listRuns(brandId: string, limit = 20) {
   return db
     .select({
@@ -16,6 +20,7 @@ export async function listRuns(brandId: string, limit = 20) {
       createdAt: run.createdAt,
       succeeded: sql<number>`count(${response.id}) filter (where ${response.status} = 'succeeded')::int`,
       failed: sql<number>`count(${response.id}) filter (where ${response.status} = 'failed')::int`,
+      isSample: sql<boolean>`coalesce(bool_or(${isFakeResponse}), false)`,
     })
     .from(run)
     .leftJoin(response, eq(response.runId, run.id))

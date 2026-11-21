@@ -1,3 +1,4 @@
+import type { LlmMode } from '@llmo/llm'
 import type { auth } from '@/lib/auth'
 
 type Session = typeof auth.$Infer.Session
@@ -24,5 +25,7 @@ export type OrgEnv = {
     organizationId: string
     /** デモ組織なら true（閲覧専用） */
     isDemo: boolean
+    /** 本物の AI で計測している組織か（live ならサンプルの回答を集計から外す） */
+    llmMode: LlmMode
   }
 }
