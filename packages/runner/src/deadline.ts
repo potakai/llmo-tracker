@@ -1,16 +1,19 @@
 import pLimit from 'p-limit'
 
+/** 1 回の質問・抽出の上限時間の初期値 */
+export const DEFAULT_TIMEOUT_MS = 120_000
+
 /**
  * items を concurrency 件ずつ並べて処理する。deadline（Date.now() の値）を過ぎたら新しく始めるのをやめ、
  * 始めたものが終わるのを待って返す。何も進まないまま区切り続けないよう、最初の 1 件は必ず始める。
  *
- * @returns すべて処理したら true、締め切りで残りを見送ったら false
+ * @returns 処理した件数。items.length より少なければ、締め切りで残りを見送った
  */
 export async function runUntilDeadline<T>(
   items: readonly T[],
   options: { concurrency: number; deadline: number },
   fn: (item: T) => Promise<void>,
-): Promise<boolean> {
+): Promise<number> {
   const limit = pLimit(options.concurrency)
   let started = 0
   const results = await Promise.all(
@@ -23,5 +26,5 @@ export async function runUntilDeadline<T>(
       }),
     ),
   )
-  return results.every(Boolean)
+  return results.filter(Boolean).length
 }

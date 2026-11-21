@@ -1,12 +1,14 @@
 import { analysis, type Db, mention, response, run } from '@llmo/db'
 import { EXTRACTION_SCHEMA_VERSION, type ExtractionResult, type Extractor } from '@llmo/llm'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
-import { runUntilDeadline } from './deadline'
+import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
 export type AnalyzeDeps = {
   db: Db
   extractor: Extractor
   concurrency?: number
+  /** 1 回の抽出の上限時間。過ぎたら LLM の抽出器はルールベースに切り替える */
+  timeoutMs?: number
 }
 
 /**
@@ -40,8 +42,7 @@ export async function analyzeRun(
     .leftJoin(analysis, eq(analysis.responseId, response.id))
     .where(and(eq(response.runId, runId), eq(response.status, 'succeeded'), needsAnalysis))
 
-  let analyzed = 0
-  await runUntilDeadline(
+  const analyzed = await runUntilDeadline(
     rows,
     {
       concurrency: deps.concurrency ?? 4,
@@ -56,9 +57,9 @@ export async function analyzeRun(
           name: c.name,
           aliases: c.aliases,
         })),
+        abortSignal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       })
       await saveAnalysis(db, row.id, result)
-      analyzed += 1
     },
   )
   return { analyzed, remaining: rows.length - analyzed }

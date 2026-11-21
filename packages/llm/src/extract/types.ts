@@ -8,6 +8,8 @@ export type ExtractInput = {
   answerText: string
   brand: { name: string; aliases: string[] }
   competitors: { id: string; name: string; aliases: string[] }[]
+  /** これが中断されたら抽出を打ち切る（LLM の抽出器はルールベースに切り替える） */
+  abortSignal?: AbortSignal
 }
 
 export type ExtractedMention = {

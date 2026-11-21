@@ -115,6 +115,7 @@ export function createLlmExtractor(options: { model: LanguageModel; modelId: str
           prompt: buildExtractionPrompt(input),
           output: Output.object({ schema: llmExtractionSchema, name: 'answer_analysis' }),
           maxRetries: 2,
+          abortSignal: input.abortSignal,
         })
         const llm = llmExtractionSchema.parse(output)
         const mentions = reconcile(input, llm)

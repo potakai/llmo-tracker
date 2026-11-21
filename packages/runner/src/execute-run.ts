@@ -15,7 +15,7 @@ import {
 } from '@llmo/llm'
 import { and, eq, gte, isNull, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
-import { runUntilDeadline } from './deadline'
+import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
 // DB の provider enum と LLM 側の ProviderId がずれたらここで型エラーになる
 const _providerIdsMatch: [Provider] extends [ProviderId]
@@ -36,7 +36,7 @@ export type ExecuteRunDeps = {
   db: Db
   /** 同時に投げる質問の数（API のレート制限に合わせて調整） */
   concurrency?: number
-  /** 1 回の質問のタイムアウト */
+  /** 1 回の質問・抽出のタイムアウト */
   timeoutMs?: number
 } & (
   | RunLlm
@@ -143,7 +143,7 @@ export async function executeRunSlice(
   const tasks = await pendingTasks(db, runId, brand, options.retryFailedBefore)
   const hints = { names: [brand.name, ...brand.competitors.map((c) => c.name)] }
   const concurrency = deps.concurrency ?? DEFAULT_CONCURRENCY
-  const askedAll = await runUntilDeadline(tasks, { concurrency, deadline }, async (task) => {
+  const asked = await runUntilDeadline(tasks, { concurrency, deadline }, async (task) => {
     try {
       const result = await providers[task.provider].ask({
         prompt: task.promptText,
@@ -155,10 +155,16 @@ export async function executeRunSlice(
       await saveFailure(db, runId, task, providers[task.provider].model, error)
     }
   })
-  if (!askedAll) return { done: false }
+  if (asked < tasks.length) return { done: false }
+  // この回で質問を進めて締め切りを過ぎていたら、抽出は次の回に回す（最低 1 件の進捗は質問で済んでいる）
+  if (tasks.length > 0 && Date.now() >= deadline) return { done: false }
 
   // 回答がそろってから、まとめて分析する（分析だけ失敗しても回答は残る。あとから再分析できる）
-  const { remaining } = await analyzeRun({ db, extractor, concurrency }, runId, { deadline })
+  const { remaining } = await analyzeRun(
+    { db, extractor, concurrency, timeoutMs: deps.timeoutMs },
+    runId,
+    { deadline },
+  )
   if (remaining > 0) return { done: false }
 
   const summary = await summarize(db, runId)
@@ -172,7 +178,6 @@ export async function executeRunSlice(
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONCURRENCY = 4
-const DEFAULT_TIMEOUT_MS = 120_000
 
 type BrandForTasks = {
   prompts: { id: string; text: string }[]
