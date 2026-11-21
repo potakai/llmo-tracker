@@ -13,7 +13,7 @@ export type AppDeps = {
   /**
    * run をジョブとして投げる。
    * 開発ではリクエストのあとに同じプロセスで実行、テストではその場で実行して待つ、
-   * 本番では Trigger.dev に渡す（RUN_DISPATCH=trigger）
+   * 本番では Inngest にイベントを送る（RUN_DISPATCH=inngest）
    */
   dispatchRun: (runId: string) => Promise<void> | void
 }

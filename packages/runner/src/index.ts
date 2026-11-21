@@ -2,6 +2,7 @@ export { type AnalyzeDeps, analyzeRun } from './analyze'
 export { createManualRun, createScheduledRun, RunAlreadyActiveError } from './create-run'
 export { createDailyRuns, type DailyRunsResult, isDemoMetadata, tokyoDate } from './daily'
 export {
+  dbNow,
   type ExecuteRunDeps,
   executeRun,
   executeRunSlice,

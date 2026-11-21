@@ -223,7 +223,7 @@ async function pendingTasks(
 }
 
 /** DB の時計での現在時刻（response.created_at と比べるため、アプリの時計は使わない） */
-async function dbNow(db: Db): Promise<Date> {
+export async function dbNow(db: Db): Promise<Date> {
   // ミリ秒に切り捨てるので、この時刻以降に保存された行は必ず「以降」と判定される
   const [row] = await db.execute<{ ms: string }>(
     sql`select floor(extract(epoch from now()) * 1000)::bigint::text as ms`,
