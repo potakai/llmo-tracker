@@ -102,6 +102,28 @@ describe('LLM の結果との突き合わせ', () => {
     ])
   })
 
+  it('括弧書きまで含めて完全一致する登録名があれば、括弧を除いた照合より先にそちらを使う', () => {
+    // Arrange：自社「コヨミタイム」と、括弧書き付きの競合「コヨミタイム（給与版）」
+    const kintai: ExtractInput = {
+      answerText: '',
+      brand: { name: 'コヨミタイム', aliases: [] },
+      competitors: [{ id: 'c-pay', name: 'コヨミタイム（給与版）', aliases: [] }],
+    }
+    const llm: LlmExtraction = {
+      entities: [{ name: 'コヨミタイム（給与版）' }, { name: 'コヨミタイム' }],
+      brandSentiment: 'neutral',
+    }
+
+    // Act
+    const mentions = reconcile(kintai, llm)
+
+    // Assert
+    expect(mentions).toEqual([
+      { entityType: 'competitor', competitorId: 'c-pay', name: 'コヨミタイム（給与版）', rank: 1 },
+      { entityType: 'brand', competitorId: null, name: 'コヨミタイム', rank: 2 },
+    ])
+  })
+
   it('ひらがなで書かれた名前も、カタカナで登録した名前と同じとみなす', () => {
     const llm: LlmExtraction = {
       entities: [{ name: 'まねーふぉわーど' }],

@@ -105,20 +105,33 @@ export function reconcile(input: ExtractInput, llm: LlmExtraction): ExtractedMen
 /** 括弧書きの付記（「（クラウド版）」など）。normalize で全角の括弧は半角になっている */
 const PARENTHETICAL = /\([^()]*\)/g
 
-/** 照合に使う表記：normalize したものと、そこから括弧書きを取り除いたもの */
-function matchKeys(name: string): string[] {
-  const normalized = normalize(name)
-  const stripped = normalized.replace(PARENTHETICAL, '')
-  return [...new Set([normalized, stripped])].filter((k) => k !== '')
+/** 括弧書きの付記を取り除いた表記（normalize 済みの値に使う） */
+function stripParenthetical(normalized: string): string {
+  return normalized.replace(PARENTHETICAL, '')
+}
+
+/** 登録名のどれかが、key 関数で表記をそろえたときに target と一致する登録済みの会社 */
+function findByKey(
+  target: string,
+  entities: RegisteredEntity[],
+  key: (normalized: string) => string,
+): RegisteredEntity | undefined {
+  if (!target) return undefined
+  return entities.find((e) => e.names.some((n) => key(normalize(n)) === target))
 }
 
 /**
  * 登録済みの名前・別名と、表記をそろえたうえでの完全一致だけで照らす。
- * 含んでいるかどうかでは一致とみなさない（「ミソラハタ会計」は「ソラハタ会計」ではない）
+ * 含んでいるかどうかでは一致とみなさない（「ミソラハタ会計」は「ソラハタ会計」ではない）。
+ * まず全登録名に normalize 後の完全一致を探し、どれにも一致しなければ括弧書きを除いて比べる
+ * （自社「コヨミタイム」と競合「コヨミタイム（給与版）」があっても、競合の名前は競合に当てる）
  */
 function matchEntity(name: string, entities: RegisteredEntity[]): RegisteredEntity | undefined {
-  const targets = matchKeys(name)
-  return entities.find((e) => e.names.some((n) => matchKeys(n).some((k) => targets.includes(k))))
+  const normalized = normalize(name)
+  return (
+    findByKey(normalized, entities, (n) => n) ??
+    findByKey(stripParenthetical(normalized), entities, stripParenthetical)
+  )
 }
 
 /** LLM の出力から抽出結果を作る。本番の抽出と、評価の replay で同じものを使う */
