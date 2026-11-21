@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  estimateCostUsd,
-  GEMINI_FREE_SEARCH_REQUESTS_PER_MONTH,
-  hasFreeSearchTier,
-  modelsSharingFreeSearchTier,
-} from '../src'
+import { estimateCostUsd, GEMINI_FREE_SEARCHES_PER_MONTH, hasFreeSearchTier } from '../src'
 
 const NOV_2026 = new Date('2026-11-21T00:00:00Z')
 
@@ -76,18 +71,27 @@ describe('estimateCostUsd', () => {
       at: NOV_2026,
     }
 
-    it('当月の検索のリクエストが無料枠に収まっていると、検索の費用は 0 になる', () => {
+    it('当月の検索の回数と合わせて無料枠に収まると、検索の費用は 0 になる', () => {
       const cost = estimateCostUsd({
         ...base,
-        searchRequestsUsedThisMonth: GEMINI_FREE_SEARCH_REQUESTS_PER_MONTH - 1,
+        searchesUsedThisMonth: GEMINI_FREE_SEARCHES_PER_MONTH - 3,
       })
       expect(cost).toBe(0)
+    })
+
+    it('残りの無料枠が足りないときは、超えた分の検索だけ $14/1k かかる', () => {
+      // 残り 1 回で 3 回検索したら、2 回分
+      const cost = estimateCostUsd({
+        ...base,
+        searchesUsedThisMonth: GEMINI_FREE_SEARCHES_PER_MONTH - 1,
+      })
+      expect(cost).toBeCloseTo(2 * 0.014, 6)
     })
 
     it('無料枠を使い切ったあとは、検索 1 回ごとに $14/1k かかる', () => {
       const cost = estimateCostUsd({
         ...base,
-        searchRequestsUsedThisMonth: GEMINI_FREE_SEARCH_REQUESTS_PER_MONTH,
+        searchesUsedThisMonth: GEMINI_FREE_SEARCHES_PER_MONTH + 10,
       })
       expect(cost).toBeCloseTo(3 * 0.014, 6)
     })
@@ -102,7 +106,7 @@ describe('estimateCostUsd', () => {
         provider: 'openai',
         model: 'gpt-5.4-mini',
         searchCount: 1,
-        searchRequestsUsedThisMonth: 0,
+        searchesUsedThisMonth: 0,
       })
       expect(cost).toBeCloseTo(0.01, 6)
     })
@@ -123,12 +127,5 @@ describe('hasFreeSearchTier', () => {
     expect(
       hasFreeSearchTier({ provider: 'gemini', model: 'gemini-3.8-flash-2026-11-01', at: NOV_2026 }),
     ).toBe(true)
-  })
-})
-
-describe('modelsSharingFreeSearchTier', () => {
-  it('無料枠を数える対象は料金表にある Gemini のモデルだけで、フェイクやデモのモデルは入らない', () => {
-    expect(modelsSharingFreeSearchTier('gemini')).toEqual(['gemini-3.8-flash'])
-    expect(modelsSharingFreeSearchTier('openai')).toEqual([])
   })
 })

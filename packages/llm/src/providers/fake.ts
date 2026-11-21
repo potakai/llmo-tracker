@@ -3,6 +3,12 @@ import type { AnswerProvider, AskInput, AskResult, ProviderId } from '../types'
 /** フェイクのプロバイダーが名乗るモデル名の接頭辞（`fake-openai` など）。DB の response.model に残る */
 export const FAKE_MODEL_PREFIX = 'fake-'
 
+/**
+ * デモのデータ（apps/web/scripts/seed-demo.ts）が名乗るモデル名の接頭辞（`demo-openai` など）。
+ * フェイクと同じく本物の API は使っていないので、検索の無料枠の利用回数などには数えない
+ */
+export const DEMO_MODEL_PREFIX = 'demo-'
+
 /** フェイクの回答か（モデル名で判定する）。SQL で絞るときも FAKE_MODEL_PREFIX を使い、判定をここに集める */
 export function isFakeModel(model: string): boolean {
   return model.startsWith(FAKE_MODEL_PREFIX)

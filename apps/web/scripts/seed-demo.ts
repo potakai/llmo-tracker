@@ -5,7 +5,12 @@
  * 会社名とドメインはすべて架空（.example）。
  */
 import { brand, competitor, member, organization, prompt, run, user } from '@llmo/db'
-import { type AnswerProvider, createRuleBasedExtractor, type ProviderId } from '@llmo/llm'
+import {
+  type AnswerProvider,
+  createRuleBasedExtractor,
+  DEMO_MODEL_PREFIX,
+  type ProviderId,
+} from '@llmo/llm'
 import { createScheduledRun, executeRun } from '@llmo/runner'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
@@ -57,7 +62,7 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
   let calls = 0
   return {
     id,
-    model: `demo-${id}`,
+    model: `${DEMO_MODEL_PREFIX}${id}`,
     async ask({ prompt: question }) {
       calls += 1
       const random = rng(`${id}:${question}:${state.day}:${calls}`)
@@ -91,7 +96,7 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
 
       return {
         provider: id,
-        model: `demo-${id}`,
+        model: `${DEMO_MODEL_PREFIX}${id}`,
         text,
         sources,
         inputTokens: 40,
