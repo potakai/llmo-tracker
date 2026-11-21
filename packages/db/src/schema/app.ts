@@ -197,6 +197,8 @@ export const response = pgTable(
     latencyMs: integer(),
     inputTokens: integer(),
     outputTokens: integer(),
+    /** Web 検索が何回走ったか（費用の計算に使う）。保存を始める前の回答は null */
+    searchCount: integer(),
     costUsd: numeric({ precision: 10, scale: 6, mode: 'number' }),
     createdAt: createdAt(),
   },
@@ -209,7 +211,10 @@ export const response = pgTable(
       t.sampleIndex,
     ),
     index('response_prompt_id_created_at_idx').on(t.promptId, t.createdAt),
+    // 当月のアプリ全体の検索の回数を数える（Gemini の検索の無料枠の見積もり）
+    index('response_provider_created_at_idx').on(t.provider, t.createdAt),
     check('response_sample_index_non_negative', sql`${t.sampleIndex} >= 0`),
+    check('response_search_count_non_negative', sql`${t.searchCount} >= 0`),
     check(
       'response_status_payload',
       sql`(${t.status} = 'succeeded' and ${t.answerText} is not null) or (${t.status} = 'failed' and ${t.error} is not null)`,

@@ -20,7 +20,8 @@ const provider = providers[providerArg as ProviderId]
 console.log(`→ ${provider.id} (${provider.model}) に質問中...\n`)
 
 const result = await provider.ask({ prompt, abortSignal: AbortSignal.timeout(120_000) })
-const cost = estimateCostUsd(result)
+// 当月の利用回数はわからないので、無料枠を考えない（上限側の見積もり）
+const cost = estimateCostUsd({ ...result, at: new Date() })
 
 console.log(result.text)
 console.log('\n--- 引用元 ---')

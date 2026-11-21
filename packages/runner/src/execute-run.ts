@@ -10,10 +10,13 @@ import {
   type AskResult,
   type Extractor,
   estimateCostUsd,
+  hasFreeSearchTier,
+  MODEL_SNAPSHOT_SUFFIX_PATTERN,
+  modelsSharingFreeSearchTier,
   type ProviderId,
   type Providers,
 } from '@llmo/llm'
-import { and, eq, gte, isNull, or, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
@@ -245,6 +248,7 @@ async function saveSuccess(
   result: AskResult,
   brandDomain: string | null,
 ) {
+  const at = new Date()
   const values = {
     runId,
     promptId: task.promptId,
@@ -257,7 +261,12 @@ async function saveSuccess(
     latencyMs: result.latencyMs,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    costUsd: estimateCostUsd(result),
+    searchCount: result.searchCount,
+    costUsd: estimateCostUsd({
+      ...result,
+      at,
+      searchRequestsUsedThisMonth: await countSearchRequestsThisMonth(db, result, at),
+    }),
   }
 
   await db.transaction(async (tx) => {
@@ -279,6 +288,39 @@ async function saveSuccess(
       await tx.insert(citation).values(citations.map((c) => ({ ...c, responseId: saved.id })))
     }
   })
+}
+
+/**
+ * 検索の無料枠の見積もりのため、当月（UTC）にアプリ全体で使った検索のリクエストの数を数える。
+ * 無料枠は API キー（＝アプリ全体）で共有されるので、組織では絞らない。無料枠のないモデルは undefined。
+ * - 検索回数を保存する前の回答（search_count が null）は、検索したものとして数える（安全側）
+ * - 同時に保存される回答どうしは互いを数えないので、無料枠の境目では少しだけ少なく見積もることがある
+ * - Google の請求の月の区切り（タイムゾーン）は料金ページに書かれていないので、UTC で区切る
+ */
+async function countSearchRequestsThisMonth(
+  db: Db,
+  result: AskResult,
+  at: Date,
+): Promise<number | undefined> {
+  if (result.searchCount === 0 || !hasFreeSearchTier({ ...result, at })) return undefined
+  const monthStart = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1))
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(response)
+    .where(
+      and(
+        eq(response.provider, result.provider),
+        // 日付付きのモデル名（gemini-3.8-flash-2026-11-01 など）も、料金表の名前にそろえて数える
+        inArray(
+          sql`regexp_replace(${response.model}, ${MODEL_SNAPSHOT_SUFFIX_PATTERN}, '')`,
+          modelsSharingFreeSearchTier(result.provider),
+        ),
+        eq(response.status, 'succeeded'),
+        gte(response.createdAt, monthStart),
+        sql`coalesce(${response.searchCount}, 1) > 0`,
+      ),
+    )
+  return row?.count ?? 0
 }
 
 async function saveFailure(db: Db, runId: string, task: Task, model: string, error: unknown) {

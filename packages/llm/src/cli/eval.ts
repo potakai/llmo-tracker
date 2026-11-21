@@ -50,6 +50,7 @@ function summarizeUsage(usage: UsageTracker | null, modelId: string): ReportUsag
     inputTokens: totals.inputTokens,
     outputTokens: totals.outputTokens,
     searchCount: 0,
+    at: new Date(),
   })
   return { ...totals, costUsd }
 }

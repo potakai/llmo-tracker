@@ -25,7 +25,14 @@ export {
   type Extractor,
 } from './extract/types'
 export { createLlmPolicyWith, type LlmMode, type LlmPolicy, liveModeFor } from './policy'
-export { estimateCostUsd } from './pricing'
+export {
+  estimateCostUsd,
+  GEMINI_FREE_SEARCH_REQUESTS_PER_MONTH,
+  hasFreeSearchTier,
+  MODEL_SNAPSHOT_SUFFIX_PATTERN,
+  modelsSharingFreeSearchTier,
+  pricingModelName,
+} from './pricing'
 export { createFakeProvider, FAKE_MODEL_PREFIX, isFakeModel } from './providers/fake'
 export { createGeminiProvider, DEFAULT_GEMINI_MODEL } from './providers/gemini'
 export { createOpenAIProvider, DEFAULT_OPENAI_MODEL } from './providers/openai'
