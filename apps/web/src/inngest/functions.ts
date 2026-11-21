@@ -16,8 +16,9 @@ import { createRunRequestedEvent, runRequested } from './events'
 // ジョブの中身はすべて packages/runner にある。ここはそれを Inngest のステップに載せるだけ
 
 /**
- * 1 ステップで run を進める時間。Vercel の関数の上限（/api/inngest の maxDuration）より十分短くする。
- * 投げ途中の質問は待つので、1 ステップは最長で これ + 質問のタイムアウト（120 秒）くらいかかる
+ * 1 ステップで、新しい質問・抽出を始めてよい時間。予算を使い切っても投げ途中の質問は待つので、
+ * 1 ステップは最長で これ + 質問のタイムアウト（120 秒）+ DB の読み書き くらいかかる。
+ * 1 回のリクエストの長さは /api/inngest の maxDuration のコメントを参照
  */
 const SLICE_BUDGET_MS = 45_000
 /** API のレート制限と費用を抑えるため、同時に動かす run の数。Hobby プランの上限（5）より小さくする */

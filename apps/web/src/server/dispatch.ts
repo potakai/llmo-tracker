@@ -1,4 +1,5 @@
 import { executeRun } from '@llmo/runner'
+import type { Inngest } from 'inngest'
 import { after } from 'next/server'
 import { inngest } from '@/inngest/client'
 import { createRunRequestedEvent } from '@/inngest/events'
@@ -37,19 +38,23 @@ export function createInngestDispatcher(sender: EventSender): Dispatcher {
   }
 }
 
-/** RUN_DISPATCH=inngest なら Inngest、未設定なら同じプロセスで実行する */
+/**
+ * RUN_DISPATCH=inngest なら Inngest、未設定なら同じプロセスで実行する。
+ * 開発モードかどうかは、Inngest の SDK がクライアントの環境変数から決めたもの（client.mode）をそのまま使う。
+ * INNGEST_DEV=1 / true / URL なら開発モード、0 / false / 未設定なら cloud で、cloud ならイベントキーが要る
+ */
 export function selectDispatcher(
   env: Record<string, string | undefined> = process.env,
+  client: Pick<Inngest, 'mode' | 'send'> = inngest,
 ): Dispatcher {
   if (!env.RUN_DISPATCH) return dispatchInProcess
   if (env.RUN_DISPATCH !== 'inngest') {
     throw new Error(`RUN_DISPATCH は未設定か inngest にしてください（${env.RUN_DISPATCH}）`)
   }
-  // 開発サーバー（INNGEST_DEV）に送るときはキーがいらない
-  if (!env.INNGEST_EVENT_KEY && !env.INNGEST_DEV) {
+  if (client.mode !== 'dev' && !env.INNGEST_EVENT_KEY) {
     throw new Error(
       'RUN_DISPATCH=inngest には INNGEST_EVENT_KEY（手元では INNGEST_DEV=1）が必要です',
     )
   }
-  return createInngestDispatcher(inngest)
+  return createInngestDispatcher(client)
 }
