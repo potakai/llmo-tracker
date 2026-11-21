@@ -49,9 +49,12 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByLabel(/AI に聞く質問/).fill('おすすめの会計ソフトは？\n安い会計ソフトは？')
   await page.getByRole('button', { name: '登録して計測画面へ' }).click()
   await expect(page).toHaveURL(/\/app\/brands\//)
+  // オンボーディングの送信ボタンまでスクロールしていても、遷移先は先頭から表示する
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   await expect(page.getByText(/まだ計測していません。「今すぐ計測」を押すと/)).toBeVisible()
   // 本物の AI を許可していない組織なので、フェイクで計測することが伝わる
   await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeVisible()
+  await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeInViewport()
 
   await page.getByRole('button', { name: '今すぐ計測' }).click()
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })

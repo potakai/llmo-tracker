@@ -54,7 +54,9 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
     setPending(false)
     const body = await res.json()
     if ('brand' in body) {
-      router.push(`/app/brands/${body.brand.id}`)
+      // ページ要素への自動スクロールで、レイアウト上部の案内が隠れないようにする
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      router.push(`/app/brands/${body.brand.id}`, { scroll: false })
       return
     }
     const issuesFromApi = body.error.issues as Issue[] | undefined
