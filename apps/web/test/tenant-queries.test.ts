@@ -54,6 +54,13 @@ describe('クエリはテナントの境界（brand.organization_id）で絞る'
     expect(metrics.shareOfVoice).toEqual([])
     expect(metrics.topDomains).toEqual([])
     expect(metrics.byPrompt).toEqual([])
+    expect(metrics.byKind.map((k) => k.n)).toEqual([0, 0])
+    // 種類で絞り込んでも、他の組織の回答は入らない
+    const filtered = await getBrandMetrics(ids.otherOrgId, ids.brandId, 'fake', {
+      days: 7,
+      kind: 'question',
+    })
+    expect(filtered.latest?.n).toBe(0)
   })
 
   it('他の組織の ID を渡すと、計測の一覧は空、詳細は見つからない', async () => {

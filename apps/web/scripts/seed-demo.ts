@@ -29,6 +29,9 @@ const PROMPTS = [
   'インボイス制度に対応した安い会計ソフトを教えて',
   '経理の経験がなくても使える会計ソフトは？',
 ]
+/** キーワード（検索のように単語を並べた聞き方）の質問。質問文より自社が出にくい想定 */
+const KEYWORD_PROMPTS = ['会計ソフト おすすめ 中小企業', 'クラウド会計 安い']
+const KEYWORD_FACTOR = 0.6
 const DOMAINS = [
   { url: 'https://hikaku-navi.example/kaikei', title: '会計ソフト比較ナビ' },
   { url: 'https://mirai-kaikei.example/', title: 'ミライ会計 公式' },
@@ -68,7 +71,8 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
       const random = rng(`${id}:${question}:${state.day}:${calls}`)
       const t = state.day / (DAYS - 1)
       const boost = state.day >= 18 ? 0.15 : 0
-      const pBrand = id === 'openai' ? 0.22 + 0.2 * t + boost : 0.12 + 0.12 * t + boost / 2
+      const pBase = id === 'openai' ? 0.22 + 0.2 * t + boost : 0.12 + 0.12 * t + boost / 2
+      const pBrand = KEYWORD_PROMPTS.includes(question) ? pBase * KEYWORD_FACTOR : pBase
 
       const candidates: { name: string; weight: number }[] = [
         { name: COMPETITORS[0]!, weight: random() < 0.8 ? 3 + random() : 0 },
@@ -176,7 +180,12 @@ async function main() {
       .returning()) as [typeof brand.$inferSelect]
   }
   await db.insert(competitor).values(COMPETITORS.map((name) => ({ brandId: b.id, name })))
-  await db.insert(prompt).values(PROMPTS.map((text) => ({ brandId: b.id, text })))
+  await db
+    .insert(prompt)
+    .values([
+      ...PROMPTS.map((text) => ({ brandId: b.id, text, kind: 'question' as const })),
+      ...KEYWORD_PROMPTS.map((text) => ({ brandId: b.id, text, kind: 'keyword' as const })),
+    ])
 
   // 4. 30 日分の自動計測
   const state = { day: 0 }

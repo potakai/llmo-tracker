@@ -5,11 +5,13 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceDot,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
+import { findLonePoint } from '@/lib/trend'
 
 export type TrendRow = {
   date: string
@@ -22,6 +24,8 @@ export type TrendRow = {
 
 const pct = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : `${Math.round(v)}%`
+const LONE_POINT_NOTE = '2 日分たまると、推移が線で表示されます'
+
 const shortDate = (iso: string) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`
 
 /**
@@ -32,6 +36,9 @@ export function TrendChart({ rows }: { rows: TrendRow[] }) {
   // 計測した日が少ないうちは線にならないので、点も描く
   const sparse = rows.filter((r) => r.all !== null).length < 3
   const dot = (color: string, r = 3) => (sparse ? { r, fill: color, stroke: color } : false)
+  // 計測が 1 日分だけだと点が 1 つしか出ず、何のグラフかわからないので、点の横に案内を出す
+  const lone = findLonePoint(rows)
+  const loneOnRight = lone !== null && lone.index >= rows.length / 2
   return (
     <div className="h-72 w-full">
       <ResponsiveContainer>
@@ -103,6 +110,21 @@ export function TrendChart({ rows }: { rows: TrendRow[] }) {
             isAnimationActive={false}
             connectNulls
           />
+          {lone && lone.row.all !== null && (
+            <ReferenceDot
+              x={lone.row.date}
+              y={lone.row.all}
+              r={0}
+              ifOverflow="visible"
+              label={{
+                value: LONE_POINT_NOTE,
+                position: loneOnRight ? 'left' : 'right',
+                offset: 12,
+                fill: 'var(--color-ink-soft)',
+                fontSize: 12,
+              }}
+            />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </div>

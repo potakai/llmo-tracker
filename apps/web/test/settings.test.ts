@@ -135,6 +135,9 @@ describe('デモ組織は閲覧専用', () => {
       client.post(`/api/brands/${brand.id}/runs`, {}),
       client.request('PATCH', `/api/brands/${brand.id}`, { name: '乗っ取り' }),
       client.post(`/api/brands/${brand.id}/prompts`, { text: '新しい質問' }),
+      client.request('PATCH', `/api/brands/${brand.id}/prompts/${brand.prompts[0].id}`, {
+        kind: 'keyword',
+      }),
       client.post('/api/brands', { name: '別ブランド', prompts: ['質問'] }),
     ]
     for (const res of await Promise.all(attempts)) {

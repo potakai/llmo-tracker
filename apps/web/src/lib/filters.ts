@@ -6,6 +6,7 @@ export function filterHref(path: string, current: MetricsQuery, changes: Partial
   const params = new URLSearchParams()
   if (next.days !== 30) params.set('days', String(next.days))
   if (next.ai) params.set('ai', next.ai)
+  if (next.kind) params.set('kind', next.kind)
   if (next.q) params.set('q', next.q)
   const query = params.toString()
   return query ? `${path}?${query}` : path

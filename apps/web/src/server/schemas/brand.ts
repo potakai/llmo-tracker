@@ -1,4 +1,4 @@
-import { PROVIDERS } from '@llmo/db'
+import { PROMPT_KINDS, PROVIDERS } from '@llmo/db'
 import { z } from 'zod'
 
 /** 1ブランドで有効にできる質問の上限 */
@@ -97,7 +97,15 @@ export const updateCompetitorInput = competitorInput
   .partial()
   .refine((value) => Object.keys(value).length > 0, { error: '変更する項目がありません' })
 
-export const createPromptInput = z.object({ text: promptText })
+export const promptKind = z.enum(PROMPT_KINDS, { error: '質問の種類が正しくありません' })
+
+export const createPromptInput = z.object({
+  text: promptText,
+  kind: promptKind.default('question'),
+})
+
+/** 質問の変更。文面は変えられない（変えると過去の計測と比べられなくなる）ので、種類だけ */
+export const updatePromptInput = z.object({ kind: promptKind })
 
 export const competitorParams = brandParams.extend({
   competitorId: z.uuid({ error: '競合IDの形式が正しくありません' }),
@@ -107,7 +115,7 @@ export const promptParams = brandParams.extend({
   promptId: z.uuid({ error: '質問IDの形式が正しくありません' }),
 })
 
-/** ダッシュボードの絞り込み。画面の URL（days / ai / q）と API の両方で使う */
+/** ダッシュボードの絞り込み。画面の URL（days / ai / kind / q）と API の両方で使う */
 export const metricsQuery = z.object({
   days: z.coerce
     .number()
@@ -115,6 +123,7 @@ export const metricsQuery = z.object({
     .refine((d) => [7, 30, 90].includes(d), { error: '期間は 7・30・90 日から選んでください' })
     .default(30),
   ai: z.enum(PROVIDERS).optional(),
+  kind: promptKind.optional(),
   q: z.uuid().optional(),
 })
 export type MetricsQuery = z.infer<typeof metricsQuery>
