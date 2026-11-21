@@ -50,6 +50,8 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByRole('button', { name: '登録して計測画面へ' }).click()
   await expect(page).toHaveURL(/\/app\/brands\//)
   await expect(page.getByText(/まだ計測していません。「今すぐ計測」を押すと/)).toBeVisible()
+  // オンボーディングでスクロールしていても、ブランドの画面は一番上から表示される
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
   // 本物の AI を許可していない組織なので、フェイクで計測することが伝わる
   await expect(page.getByText(/この組織の計測はサンプルの AI/)).toBeVisible()
 
