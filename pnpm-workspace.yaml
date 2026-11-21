@@ -6,3 +6,8 @@ packages:
 # esbuild：drizzle-kit / tsx が使う
 onlyBuiltDependencies:
   - esbuild
+
+# インストール時のスクリプトを「実行しない」と決めたパッケージ（決めていないと、毎回ビルドのログに警告が出る）
+# protobufjs：inngest → OpenTelemetry 経由で入る。postinstall はバージョンの書き方を確かめて警告を出すだけで、実行しなくても動く
+ignoredBuiltDependencies:
+  - protobufjs
