@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtractedMention } from '../src'
 import type { ExpectedExtraction } from '../src/eval/golden'
-import { type ActualExtraction, aggregateScores, scoreCase } from '../src/eval/score'
+import { type ActualExtraction, aggregateScores, scoreCase, scoreCases } from '../src/eval/score'
 
 const brand = (name = 'ソラ会計') => ({ entityType: 'brand' as const, competitorId: null, name })
 const competitor = (competitorId: string, name = competitorId) => ({
@@ -186,6 +186,37 @@ describe('ケースごとの判定', () => {
       passed: false,
     })
     expect(score.registered).toMatchObject({ truePositives: 0, falseNegatives: 3 })
+  })
+})
+
+describe('全ケースの採点', () => {
+  const mentions = [competitor('kumonos'), brand(), competitor('namima')]
+
+  it('抽出器が sentiment を一度も返さなければ、各ケースの感情は対象外（null）になり、感情以外が合っていれば正解になる', () => {
+    // Act
+    const scores = scoreCases([
+      { expected, actual: actual(mentions, null) },
+      { expected, actual: actual([brand()], null) },
+    ])
+
+    // Assert
+    expect(scores.map((s) => s.sentiment)).toEqual([null, null])
+    expect(scores.map((s) => s.passed)).toEqual([true, false])
+    expect(aggregateScores(scores)).toMatchObject({ passedCount: 1, sentimentAccuracy: null })
+  })
+
+  it('1件でも sentiment を返していれば、感情が外れたケースは不正解のまま', () => {
+    const scores = scoreCases([
+      { expected, actual: actual(mentions, 'positive') },
+      { expected, actual: actual(mentions, null) },
+    ])
+    expect(scores.map((s) => s.sentiment)).toEqual([true, false])
+    expect(scores.map((s) => s.passed)).toEqual([true, false])
+  })
+
+  it('抽出に失敗したケースは、感情を外しても不正解のまま', () => {
+    const scores = scoreCases([{ expected, actual: null }])
+    expect(scores[0]).toMatchObject({ sentiment: null, passed: false })
   })
 })
 

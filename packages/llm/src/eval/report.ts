@@ -38,8 +38,11 @@ function precisionRows(label: string, pr: PrecisionRecall, withF1: boolean): str
   ]
 }
 
+const SENTIMENT_EXCLUDED_NOTE =
+  '※ 抽出器が感情を返さないので、全問正解の判定に感情を含めていない（感情の正解率も対象外）'
+
 function formatMetrics(m: EvalMetrics): string {
-  return [
+  const rows = [
     '| 指標 | 値 | 内訳 |',
     '|---|---|---|',
     `| 全問正解のケース | ${percent(m.caseCount > 0 ? m.passedCount / m.caseCount : null)} | ${m.passedCount} / ${m.caseCount} |`,
@@ -52,6 +55,7 @@ function formatMetrics(m: EvalMetrics): string {
     ratioRow('登録済みの会社の順序一致率', m.orderAccuracy),
     ...precisionRows('未登録の会社（参考）', m.unknown, false),
   ].join('\n')
+  return m.sentimentAccuracy === null ? `${rows}\n\n${SENTIMENT_EXCLUDED_NOTE}` : rows
 }
 
 type Mention = ExpectedExtraction['mentions'][number]

@@ -163,6 +163,7 @@ describe('結果の保存と表示', () => {
 
     // Assert
     expect(report).toContain('| 感情の正解率 | — | 対象外（抽出器が感情を返さない） |')
+    expect(report).toContain('全問正解の判定に感情を含めていない')
   })
 
   it('感情だけが外れたケースは、詳細を出さずに id を1行にまとめる', () => {

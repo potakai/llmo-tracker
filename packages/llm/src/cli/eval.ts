@@ -11,7 +11,7 @@ import { type GoldenCase, loadGoldenSet } from '../eval/golden'
 import { formatReport, type ReportCase, type ReportUsage } from '../eval/report'
 import { saveResult } from '../eval/results'
 import { type CaseOutcome, runExtraction } from '../eval/run'
-import { aggregateScores, scoreCase } from '../eval/score'
+import { aggregateScores, type CaseScore, scoreCase, scoreCases } from '../eval/score'
 import type { UsageTracker } from '../eval/usage'
 import { estimateCostUsd } from '../pricing'
 
@@ -19,14 +19,14 @@ const TIMEOUT_MS = 120_000
 
 type Row = { c: GoldenCase; outcome: CaseOutcome }
 
-function toReportCase({ c, outcome }: Row): ReportCase {
+function toReportCase({ c, outcome }: Row, score: CaseScore): ReportCase {
   return {
     id: c.id,
     note: c.note,
     expected: c.expected,
     // フォールバックしたときも、何を返したかは見えるようにする（採点は不正解として数える）
     actual: outcome.result,
-    score: scoreCase(c.expected, outcome.error ? null : outcome.result),
+    score,
     error: outcome.error,
   }
 }
@@ -63,7 +63,16 @@ async function main(): Promise<void> {
     const outcome = outcomes[i]
     return outcome ? [{ c, outcome }] : []
   })
-  const reportCases = rows.map(toReportCase)
+  // 感情を返さない抽出器なら、感情は正否の判定から外れる（scoreCases を参照）
+  const scores = scoreCases(
+    rows.map(({ c, outcome }) => ({
+      expected: c.expected,
+      actual: outcome.error ? null : outcome.result,
+    })),
+  )
+  const reportCases = rows.map((row, i) =>
+    toReportCase(row, scores[i] ?? scoreCase(row.c.expected, null)),
+  )
   const metrics = aggregateScores(reportCases.map((c) => c.score))
   const reportUsage = summarizeUsage(usage, modelId)
   console.log(
@@ -84,10 +93,11 @@ async function main(): Promise<void> {
       only: args.only,
       metrics,
       usage: reportUsage,
-      cases: rows.map((row) => {
-        const { actual: _actual, ...reported } = toReportCase(row)
-        return { ...reported, result: row.outcome.result, durationMs: row.outcome.durationMs }
-      }),
+      cases: reportCases.map(({ actual: _actual, ...reported }, i) => ({
+        ...reported,
+        result: rows[i]?.outcome.result ?? null,
+        durationMs: rows[i]?.outcome.durationMs ?? 0,
+      })),
     },
     startedAt,
   )

@@ -141,14 +141,35 @@ export function scoreCase(
     order: compareOrder(expectedRegistered, actualRegistered),
     unknown: compareSets(unknownKeys(expected.mentions), unknownKeys(actual.mentions)),
   }
-  const passed =
+  return { ...score, passed: isPassed(score) }
+}
+
+/** 未登録の会社以外の判定がすべて正解か（対象外の判定は見ない） */
+function isPassed(score: Omit<CaseScore, 'passed' | 'unknown' | 'sentimentReturned'>): boolean {
+  return (
     score.brandMentioned &&
     score.brandRank &&
     score.sentiment !== false &&
-    registered.falsePositives === 0 &&
-    registered.falseNegatives === 0 &&
+    score.registered.falsePositives === 0 &&
+    score.registered.falseNegatives === 0 &&
     score.order !== false
-  return { ...score, passed }
+  )
+}
+
+/**
+ * 全ケースを採点する。抽出器が sentiment を一度も返さなかったとき（ルールベースなど）は、
+ * 感情を測れないので、各ケースの感情を対象外（null）にし、正否の判定からも外す。
+ * 感情の正解率が対象外（aggregateScores で null）になるのと揃える。
+ */
+export function scoreCases(
+  items: readonly { expected: ExpectedExtraction; actual: ActualExtraction | null }[],
+): CaseScore[] {
+  const scores = items.map(({ expected, actual }) => scoreCase(expected, actual))
+  if (scores.some((s) => s.sentimentReturned)) return scores
+  return scores.map((s) => {
+    const withoutSentiment = { ...s, sentiment: null }
+    return { ...withoutSentiment, passed: isPassed(withoutSentiment) }
+  })
 }
 
 function ratio(values: readonly (boolean | null)[]): Ratio {
