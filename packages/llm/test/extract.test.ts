@@ -5,6 +5,7 @@ import {
   createRuleBasedExtractor,
   type ExtractInput,
   type LlmExtraction,
+  normalize,
   reconcile,
 } from '../src'
 
@@ -34,6 +35,13 @@ describe('ルールベースの抽出', () => {
     // 未登録の「やよい」はルールベースではわからない
   })
 
+  it('本文がひらがなで書かれていても、カタカナで登録した名前として見つける', async () => {
+    const result = await createRuleBasedExtractor().extract(input('まねーふぉわーどが便利です'))
+    expect(result.mentions).toEqual([
+      { entityType: 'competitor', competitorId: 'c-b', name: 'マネーフォワード', rank: 1 },
+    ])
+  })
+
   it('自社が出てこなければ brandMentioned は false', async () => {
     const result = await createRuleBasedExtractor().extract(input('freee がおすすめです'))
     expect(result).toMatchObject({ brandMentioned: false, brandRank: null })
@@ -45,20 +53,80 @@ describe('LLM の結果との突き合わせ', () => {
     const llm: LlmExtraction = {
       entities: [
         { name: 'やよいの青色申告オンライン' },
-        { name: 'MFクラウド会計' },
+        { name: 'MFクラウド' },
         { name: '◯◯会計' },
         { name: 'やよいの青色申告オンライン' }, // 重複は1つにまとめる
       ],
       brandSentiment: 'positive',
     }
-    const text = 'やよい、MFクラウド会計、◯◯会計、それと freee もあります'
+    const text = 'やよい、MFクラウド、◯◯会計、それと freee もあります'
     expect(reconcile(input(text), llm)).toEqual([
       { entityType: 'unknown', competitorId: null, name: 'やよいの青色申告オンライン', rank: 1 },
-      { entityType: 'competitor', competitorId: 'c-b', name: 'MFクラウド会計', rank: 2 },
+      { entityType: 'competitor', competitorId: 'c-b', name: 'MFクラウド', rank: 2 },
       { entityType: 'brand', competitorId: null, name: '◯◯会計', rank: 3 },
-      // LLM が拾い漏らした登録済みの名前は、本文の位置順で後ろに足す
-      { entityType: 'competitor', competitorId: 'c-a', name: 'freee', rank: 4 },
     ])
+  })
+
+  it('LLM が拾わなかった登録済みの名前は、本文に出てきても足さない', () => {
+    // Arrange：本文の出典の URL に freee が含まれるが、LLM は拾っていない
+    const llm: LlmExtraction = { entities: [{ name: '◯◯会計' }], brandSentiment: 'positive' }
+    const text = '◯◯会計がおすすめです。\n出典：https://freee.example.com/blog'
+
+    // Act
+    const mentions = reconcile(input(text), llm)
+
+    // Assert
+    expect(mentions).toEqual([{ entityType: 'brand', competitorId: null, name: '◯◯会計', rank: 1 }])
+  })
+
+  it('登録済みの名前を含むだけの別の名前は、登録済みの会社とみなさず unknown にする', () => {
+    const llm: LlmExtraction = {
+      entities: [{ name: 'freee人事労務' }, { name: 'ミ◯◯会計' }, { name: 'マネー' }],
+      brandSentiment: 'not_mentioned',
+    }
+    expect(reconcile(input(''), llm)).toEqual([
+      { entityType: 'unknown', competitorId: null, name: 'freee人事労務', rank: 1 },
+      { entityType: 'unknown', competitorId: null, name: 'ミ◯◯会計', rank: 2 },
+      { entityType: 'unknown', competitorId: null, name: 'マネー', rank: 3 },
+    ])
+  })
+
+  it('括弧書きの付記を取り除いてから、登録済みの名前と完全一致で照らす', () => {
+    const llm: LlmExtraction = {
+      entities: [{ name: '◯◯会計（クラウド版）' }, { name: 'マネーフォワード(MF)' }],
+      brandSentiment: 'positive',
+    }
+    expect(reconcile(input(''), llm)).toEqual([
+      { entityType: 'brand', competitorId: null, name: '◯◯会計（クラウド版）', rank: 1 },
+      { entityType: 'competitor', competitorId: 'c-b', name: 'マネーフォワード(MF)', rank: 2 },
+    ])
+  })
+
+  it('ひらがなで書かれた名前も、カタカナで登録した名前と同じとみなす', () => {
+    const llm: LlmExtraction = {
+      entities: [{ name: 'まねーふぉわーど' }],
+      brandSentiment: 'not_mentioned',
+    }
+    expect(reconcile(input(''), llm)).toEqual([
+      { entityType: 'competitor', competitorId: 'c-b', name: 'まねーふぉわーど', rank: 1 },
+    ])
+  })
+})
+
+describe('表記の正規化', () => {
+  it('ひらがなをカタカナに寄せる（ゝゞ もカタカナの踊り字にする）', () => {
+    expect(normalize('そらはた会計')).toBe(normalize('ソラハタ会計'))
+    expect(normalize('いすゞ')).toBe('イスヾ')
+  })
+
+  it('長音記号はそのまま残し、ひらがなの長音もカタカナと同じになる', () => {
+    expect(normalize('らーめん')).toBe('ラーメン')
+    expect(normalize('ラーメン')).not.toBe(normalize('ラメン'))
+  })
+
+  it('半角カタカナ・全角英数・大文字・空白の違いは、これまでどおりそろえる', () => {
+    expect(normalize('ｺﾖﾐﾀｲﾑ')).toBe('コヨミタイム')
+    expect(normalize('ＳＯＲＡＨＡＴＡ 会計')).toBe('sorahata会計')
   })
 })
 

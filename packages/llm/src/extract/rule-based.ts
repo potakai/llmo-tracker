@@ -6,9 +6,23 @@ import {
   type Extractor,
 } from './types'
 
-/** 全角・半角や大文字・小文字の違いをそろえる（「ＡＢＣ会計」と「abc会計」を同じとみなす） */
+/** ひらがな（ぁ〜ゖ）と踊り字（ゝゞ）を、対応するカタカナにする。コードポイントの差は 0x60 */
+const HIRAGANA = /[ぁ-ゖゝゞ]/g
+const HIRAGANA_TO_KATAKANA_OFFSET = 0x60
+
+function hiraganaToKatakana(value: string): string {
+  return value.replace(HIRAGANA, (ch) =>
+    String.fromCodePoint((ch.codePointAt(0) ?? 0) + HIRAGANA_TO_KATAKANA_OFFSET),
+  )
+}
+
+/**
+ * 表記の揺れをそろえる。全角・半角、大文字・小文字、空白、ひらがな・カタカナの違いを無視する
+ * （「ＡＢＣ会計」と「abc会計」、「そらはた会計」と「ソラハタ会計」を同じとみなす）。
+ * 長音記号（ー）は消さない（「ラーメン」と「ラメン」は別物）
+ */
 export function normalize(value: string): string {
-  return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '')
+  return hiraganaToKatakana(value.normalize('NFKC').toLowerCase().replace(/\s+/g, ''))
 }
 
 export type RegisteredEntity = {

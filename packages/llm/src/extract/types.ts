@@ -2,7 +2,7 @@
  * 抽出の仕様が変わったら上げる。analysis.schema_version に保存し、
  * 古い版で抽出した回答だけを再分析できるようにする。
  */
-export const EXTRACTION_SCHEMA_VERSION = 1
+export const EXTRACTION_SCHEMA_VERSION = 2
 
 export type ExtractInput = {
   answerText: string
