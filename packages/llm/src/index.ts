@@ -10,6 +10,7 @@ import type { AnswerProvider, ProviderId } from './types'
 
 export {
   buildExtractionPrompt,
+  buildLlmExtractionResult,
   createLlmExtractor,
   type LlmExtraction,
   llmExtractionSchema,

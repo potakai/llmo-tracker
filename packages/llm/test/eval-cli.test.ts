@@ -14,13 +14,25 @@ describe('引数の解釈', () => {
       extractor: 'rule',
       only: null,
       concurrency: 4,
+      replay: null,
     })
   })
 
   it('--only と --concurrency を指定できる', () => {
     expect(
       parseEvalArgs(['--extractor', 'llm', '--only', 'acct-prose', '--concurrency', '2']),
-    ).toEqual({ extractor: 'llm', only: 'acct-prose', concurrency: 2 })
+    ).toEqual({ extractor: 'llm', only: 'acct-prose', concurrency: 2, replay: null })
+  })
+
+  it('--extractor llm には --replay で結果ファイルを指定できる', () => {
+    expect(parseEvalArgs(['--extractor', 'llm', '--replay', 'eval/results/a.json'])).toMatchObject({
+      extractor: 'llm',
+      replay: 'eval/results/a.json',
+    })
+  })
+
+  it('--replay は --extractor llm でしか使えない', () => {
+    expect(() => parseEvalArgs(['--extractor', 'rule', '--replay', 'a.json'])).toThrow(/--replay/)
   })
 
   it('--extractor がない、または rule / llm 以外だと、使い方つきのエラーになる', () => {

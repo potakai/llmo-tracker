@@ -495,6 +495,41 @@
     }
   },
   {
+    "id": "acct-generic-word-competitor-hiragana",
+    "note": "一般名詞の取り違え（ひらがな）：本文の「かんたん」（簡単という意味）は、競合の「カンタン」とは別物なので拾わない。normalize がひらがなをカタカナに寄せるため、ルールベースでは外れる（既知の制限。eval/README.md）",
+    "input": {
+      "answerText": "確定申告の書類をかんたんに作りたいなら、ソラハタ会計がおすすめです。レシートを撮影するだけで仕訳ができるので、入力もかんたんです。",
+      "brand": {
+        "name": "ソラハタ会計",
+        "aliases": ["Sorahata Kaikei", "SORAHATA会計"]
+      },
+      "competitors": [
+        {
+          "id": "kumotsumugi",
+          "name": "クモツムギ会計",
+          "aliases": ["Kumotsumugi"]
+        },
+        {
+          "id": "kantan",
+          "name": "カンタン",
+          "aliases": ["Kantan"]
+        }
+      ]
+    },
+    "expected": {
+      "brandMentioned": true,
+      "brandRank": 1,
+      "sentiment": "positive",
+      "mentions": [
+        {
+          "entityType": "brand",
+          "competitorId": null,
+          "name": "ソラハタ会計"
+        }
+      ]
+    }
+  },
+  {
     "id": "acct-similar-name-other-product",
     "note": "似た名前の取り違え：「ホシツグミ給与」は登録済みの「ホシツグミ帳簿」（別名「ホシツグミ」）とは別の製品なので、競合ではなく未登録として数える",
     "input": {
@@ -995,7 +1030,7 @@
   },
   {
     "id": "travel-prose-katakana-alias",
-    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayFennel が「ステイフェンネル」と書かれている。普通の文章での言及",
+    "note": "別名（英字の正式名に対するカタカナ）で出てくる：競合の StayFennel が「ステイフェンネル」と書かれている。普通の文章での言及。ブランドについては「口コミの数ではたびねどこが一番多い」と件数を比べているだけで、評価や推薦ではないので、感情は neutral",
     "input": {
       "answerText": "温泉旅館を探すならヤドホタルが便利です。直前の予約で安く泊まりたいならステイフェンネルのタイムセールもチェックしましょう。口コミの数ではたびねどこが一番多いので、迷ったら比べてみてください。",
       "brand": {
@@ -1018,7 +1053,7 @@
     "expected": {
       "brandMentioned": true,
       "brandRank": 3,
-      "sentiment": "positive",
+      "sentiment": "neutral",
       "mentions": [
         {
           "entityType": "competitor",

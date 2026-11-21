@@ -1,0 +1,122 @@
+{
+  "extractor": "llm",
+  "modelId": "gpt-5.4-mini",
+  "cases": [
+    {
+      "id": "acct-similar-name-suffix",
+      "result": {
+        "raw": {
+          "entities": [{ "name": "ミソラハタ会計" }, { "name": "ナミヨセ経理" }],
+          "brandSentiment": "not_mentioned"
+        }
+      }
+    },
+    {
+      "id": "crm-similar-name-prefix",
+      "result": {
+        "raw": {
+          "entities": [
+            { "name": "ネクサリオHR" },
+            { "name": "アオバトセールス" },
+            { "name": "LinkMoria" }
+          ],
+          "brandSentiment": "not_mentioned"
+        }
+      }
+    },
+    {
+      "id": "acct-similar-name-other-product",
+      "result": {
+        "raw": {
+          "entities": [
+            { "name": "ホシツグミ給与" },
+            { "name": "ソラハタ会計" },
+            { "name": "クモツムギ会計" }
+          ],
+          "brandSentiment": "positive"
+        }
+      }
+    },
+    {
+      "id": "acct-url-only",
+      "result": {
+        "raw": {
+          "entities": [
+            { "name": "クモツムギ会計" },
+            { "name": "ナミヨセ経理" },
+            { "name": "sorahatakaikei.example.jp" },
+            { "name": "kumotsumugi.example.com" }
+          ],
+          "brandSentiment": "not_mentioned"
+        }
+      }
+    },
+    {
+      "id": "acct-citation-title-only",
+      "result": {
+        "raw": {
+          "entities": [{ "name": "ソラハタ会計" }],
+          "brandSentiment": "positive"
+        }
+      }
+    },
+    {
+      "id": "acct-generic-word-competitor",
+      "result": {
+        "raw": {
+          "entities": [{ "name": "ソラハタ会計" }],
+          "brandSentiment": "positive"
+        }
+      }
+    },
+    {
+      "id": "acct-alias-unregistered-hiragana",
+      "result": {
+        "raw": {
+          "entities": [{ "name": "そらはた会計" }, { "name": "クモツムギ会計" }],
+          "brandSentiment": "not_mentioned"
+        }
+      }
+    },
+    {
+      "id": "crm-alias-both-forms",
+      "result": {
+        "raw": {
+          "entities": [
+            { "name": "アオバトセールス" },
+            { "name": "リンクモリア（LinkMoria）" },
+            { "name": "ネクサリオCRM" }
+          ],
+          "brandSentiment": "positive"
+        }
+      }
+    },
+    {
+      "id": "acct-repeat-competitor",
+      "result": {
+        "raw": {
+          "entities": [
+            { "name": "ホシツグミ帳簿" },
+            { "name": "ソラハタ会計" },
+            { "name": "ホシツグミ" }
+          ],
+          "brandSentiment": "positive"
+        }
+      }
+    },
+    {
+      "id": "acct-prose",
+      "result": {
+        "raw": { "fallbackFrom": "gpt-5.4-mini", "error": "AI_APICallError: timeout" }
+      }
+    },
+    {
+      "id": "acct-negative",
+      "result": { "raw": { "entities": "壊れた出力" } }
+    },
+    {
+      "id": "kintai-negative",
+      "result": null
+    }
+  ]
+}
