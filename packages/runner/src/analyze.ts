@@ -1,7 +1,7 @@
 import { analysis, type Db, mention, response, run } from '@llmo/db'
 import { EXTRACTION_SCHEMA_VERSION, type ExtractionResult, type Extractor } from '@llmo/llm'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
-import pLimit from 'p-limit'
+import { runUntilDeadline } from './deadline'
 
 export type AnalyzeDeps = {
   db: Db
@@ -13,12 +13,14 @@ export type AnalyzeDeps = {
  * run の回答を分析して analysis / mention に保存する。
  * まだ分析していない回答と、古い版のスキーマで分析した回答だけが対象（何度呼んでも安全）。
  * force: true なら全部やり直す（抽出ロジックを直したとき用）。
+ * deadline（Date.now() の値）を渡すと、それを過ぎたら新しい抽出を始めず、残りの件数を remaining で返す
+ * （1 回の呼び出しを時間内に収めるため。続きはもう一度呼べば分析される）。
  */
 export async function analyzeRun(
   deps: AnalyzeDeps,
   runId: string,
-  options: { force?: boolean } = {},
-): Promise<{ analyzed: number }> {
+  options: { force?: boolean; deadline?: number } = {},
+): Promise<{ analyzed: number; remaining: number }> {
   const { db } = deps
 
   const target = await db.query.run.findFirst({
@@ -38,24 +40,28 @@ export async function analyzeRun(
     .leftJoin(analysis, eq(analysis.responseId, response.id))
     .where(and(eq(response.runId, runId), eq(response.status, 'succeeded'), needsAnalysis))
 
-  const limit = pLimit(deps.concurrency ?? 4)
-  await Promise.all(
-    rows.map((row) =>
-      limit(async () => {
-        const result = await deps.extractor.extract({
-          answerText: row.answerText ?? '',
-          brand: { name: brand.name, aliases: brand.aliases },
-          competitors: brand.competitors.map((c) => ({
-            id: c.id,
-            name: c.name,
-            aliases: c.aliases,
-          })),
-        })
-        await saveAnalysis(db, row.id, result)
-      }),
-    ),
+  let analyzed = 0
+  await runUntilDeadline(
+    rows,
+    {
+      concurrency: deps.concurrency ?? 4,
+      deadline: options.deadline ?? Number.POSITIVE_INFINITY,
+    },
+    async (row) => {
+      const result = await deps.extractor.extract({
+        answerText: row.answerText ?? '',
+        brand: { name: brand.name, aliases: brand.aliases },
+        competitors: brand.competitors.map((c) => ({
+          id: c.id,
+          name: c.name,
+          aliases: c.aliases,
+        })),
+      })
+      await saveAnalysis(db, row.id, result)
+      analyzed += 1
+    },
   )
-  return { analyzed: rows.length }
+  return { analyzed, remaining: rows.length - analyzed }
 }
 
 async function saveAnalysis(db: Db, responseId: string, result: ExtractionResult) {
