@@ -18,6 +18,10 @@ test('デモアカウントでログインすると、30日分のダッシュボ
   await page.getByRole('link', { name: 'キーワード', exact: true }).click()
   await expect(page).toHaveURL(/kind=keyword/)
   await expect(page.getByText(/直近7日、キーワードの質問の回答/)).toBeVisible()
+  // 質問を 1 つ選ぶと、比べるものがないので比較は出さない
+  await page.getByRole('combobox', { name: /質問/ }).selectOption({ index: 1 })
+  await expect(page).toHaveURL(/q=/)
+  await expect(page.getByText(/聞き方別では、/)).toHaveCount(0)
 
   // 実行の詳細で、回答の中身が見られる
   await page.getByRole('link', { name: '回答を見る' }).first().click()
@@ -65,6 +69,14 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByRole('button', { name: '今すぐ計測' }).click()
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(/直近7日、AI の回答 20 件のうち/)).toBeVisible()
+
+  // キーワードの質問はまだないが、絞り込んでも種類ごとの比較は出る
+  await page.getByRole('link', { name: 'キーワード', exact: true }).click()
+  await expect(page).toHaveURL(/kind=keyword/)
+  await expect(page.getByText(/この条件では、直近7日の回答がありません/)).toBeVisible()
+  await expect(
+    page.getByText(/聞き方別では、質問文 \d+%（回答 20 件）\s*／ キーワード —（回答 0 件）/),
+  ).toBeVisible()
 })
 
 test.describe('デモアカウントでログイン済み', () => {

@@ -86,7 +86,6 @@ export default async function BrandDashboard({
                     </>
                   )}
                 </p>
-                {!filter.q && <KindComparison byKind={metrics.byKind} current={filter.kind} />}
               </>
             ) : runs.length === 0 ? (
               <p className="text-lg">
@@ -98,6 +97,8 @@ export default async function BrandDashboard({
                 この条件では、直近7日の回答がありません。期間や絞り込みを変えてみてください。
               </p>
             )}
+            {/* 選んだ種類の回答が 0 件でも、もう一方と比べられるように出す（質問を選んでいるときは null） */}
+            {metrics.byKind && <KindComparison byKind={metrics.byKind} current={filter.kind} />}
           </div>
           <RunButton
             brandId={brand.id}
@@ -263,9 +264,11 @@ export default async function BrandDashboard({
  * 聞き方（種類）ごとの言及率を並べる。例：「質問文 52% ／ キーワード 31%」。
  * 種類で絞り込んでいても、比べられるように両方出す
  */
+type KindRates = NonNullable<BrandMetrics['byKind']>
+
 function KindComparison(props: {
-  byKind: BrandMetrics['byKind']
-  current: BrandMetrics['byKind'][number]['kind'] | undefined
+  byKind: KindRates
+  current: KindRates[number]['kind'] | undefined
 }) {
   if (props.byKind.every((k) => k.n === 0)) return null
   return (

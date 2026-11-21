@@ -1,4 +1,4 @@
-import { prompt, response, run } from '@llmo/db'
+import { type PromptKind, prompt, response, run } from '@llmo/db'
 import type { LlmMode } from '@llmo/llm'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
@@ -19,6 +19,27 @@ export async function findPromptInBrand(organizationId: string, brandId: string,
     )
     .limit(1)
   return found ?? null
+}
+
+/** 質問の種類を変える。他のブランド・他の組織の質問なら何も変えずに null */
+export async function updatePromptKind(
+  organizationId: string,
+  brandId: string,
+  promptId: string,
+  kind: PromptKind,
+) {
+  const [updated] = await db
+    .update(prompt)
+    .set({ kind })
+    .where(
+      and(
+        eq(prompt.id, promptId),
+        eq(prompt.brandId, brandId),
+        inOrganization(prompt.brandId, organizationId),
+      ),
+    )
+    .returning()
+  return updated ?? null
 }
 
 /**

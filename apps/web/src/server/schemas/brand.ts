@@ -104,8 +104,11 @@ export const createPromptInput = z.object({
   kind: promptKind.default('question'),
 })
 
-/** 質問の変更。文面は変えられない（変えると過去の計測と比べられなくなる）ので、種類だけ */
-export const updatePromptInput = z.object({ kind: promptKind })
+/**
+ * 質問の変更。文面は変えられない（変えると過去の計測と比べられなくなる）ので、種類だけ。
+ * text などほかの項目が付いていたら黙って捨てずに 400 にする（文面が変わったと誤解させない）
+ */
+export const updatePromptInput = z.strictObject({ kind: promptKind })
 
 export const competitorParams = brandParams.extend({
   competitorId: z.uuid({ error: '競合IDの形式が正しくありません' }),

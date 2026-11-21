@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
-import { inOrganization } from '../queries/tenant'
+import { updatePromptKind } from '../queries/prompts'
 import {
   brandParams,
   competitorInput,
@@ -148,17 +148,8 @@ export const settingsRoutes = new Hono<OrgEnv>()
       const { brandId, promptId } = c.req.valid('param')
       const organizationId = c.var.organizationId
       await findBrandInOrg(organizationId, brandId)
-      const [updated] = await db
-        .update(prompt)
-        .set({ kind: c.req.valid('json').kind })
-        .where(
-          and(
-            eq(prompt.id, promptId),
-            eq(prompt.brandId, brandId),
-            inOrganization(prompt.brandId, organizationId),
-          ),
-        )
-        .returning()
+      const { kind } = c.req.valid('json')
+      const updated = await updatePromptKind(organizationId, brandId, promptId, kind)
       if (!updated) throw errors.notFound('質問')
       return c.json({ prompt: updated })
     },

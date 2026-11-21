@@ -69,6 +69,33 @@ describe('質問の種類の追加・変更', () => {
     expect(text.status).toBe(400)
   })
 
+  it('種類と一緒に文面を送ると 400 で、種類も文面も変わらない', async () => {
+    const { client, brand } = await setup()
+    const id = brand.prompts[0].id
+    const res = await client.request('PATCH', promptPath(brand.id, id), {
+      kind: 'keyword',
+      text: '書き換え',
+    })
+    expect(res.status).toBe(400)
+
+    const [row] = await db.select().from(prompt).where(eq(prompt.id, id))
+    expect(row).toMatchObject({ kind: 'question', text: 'おすすめの会計ソフトは？' })
+  })
+
+  it('同じ組織でも、別のブランドの質問の種類は変えられない（404）', async () => {
+    const { client, brand } = await setup()
+    const another = await client.post('/api/brands', { name: '別ブランド', prompts: ['別の質問'] })
+    const anotherPromptId = another.json.brand.prompts[0].id
+
+    const res = await client.request('PATCH', promptPath(brand.id, anotherPromptId), {
+      kind: 'keyword',
+    })
+    expect(res.status).toBe(404)
+
+    const [row] = await db.select().from(prompt).where(eq(prompt.id, anotherPromptId))
+    expect(row?.kind).toBe('question')
+  })
+
   it('他の組織の質問の種類は変えられない（404）', async () => {
     const mine = await setup('hana')
     const other = await setup('ivan')
@@ -165,6 +192,48 @@ describe('種類ごとの集計', () => {
     expect(metrics.byPrompt).toHaveLength(2)
     expect(metrics.filter.kind).toBe('keyword')
     expect(metrics.byKind.map((k: { n: number }) => k.n)).toEqual([4, 8])
+  })
+
+  it('質問を 1 つ選んでいるときは、種類ごとの比較を返さない（1 つの質問には種類が 1 つしかない）', async () => {
+    const { organizationId, brand, keywordId } = await measured()
+
+    const metrics = await getBrandMetrics(organizationId, brand.id, 'fake', {
+      days: 7,
+      promptId: keywordId,
+    })
+    expect(metrics.latest?.n).toBe(4)
+    expect(metrics.byKind).toBeNull()
+  })
+
+  it('別のブランドの質問に紐づいた回答は、種類ごと・質問ごとの集計にも種類の絞り込みにも入らない', async () => {
+    const { client, organizationId, brand, questionId } = await measured()
+    // 同じ組織の別のブランドのキーワードの質問
+    const another = await client.post('/api/brands', { name: '別ブランド', prompts: ['別 質問'] })
+    const foreignPromptId = another.json.brand.prompts[0].id as string
+    await db.update(prompt).set({ kind: 'keyword' }).where(eq(prompt.id, foreignPromptId))
+    // このブランドの run の回答（質問文・言及あり）を 1 件、別のブランドの質問に付け替える
+    const [moved] = await db
+      .select({ id: response.id })
+      .from(response)
+      .where(and(eq(response.promptId, questionId), eq(response.provider, 'openai')))
+      .limit(1)
+    await db
+      .update(response)
+      .set({ promptId: foreignPromptId })
+      .where(eq(response.id, moved?.id ?? ''))
+
+    const metrics = await getBrandMetrics(organizationId, brand.id, 'fake', { days: 7 })
+    expect(metrics.byKind).toEqual([
+      expect.objectContaining({ kind: 'question', n: 3, rate: 1 }),
+      expect.objectContaining({ kind: 'keyword', n: 8, rate: 0.25 }),
+    ])
+    expect(metrics.byPrompt.map((p) => p.promptId)).not.toContain(foreignPromptId)
+
+    const keyword = await getBrandMetrics(organizationId, brand.id, 'fake', {
+      days: 7,
+      kind: 'keyword',
+    })
+    expect(keyword.latest).toMatchObject({ n: 8, rate: 0.25 })
   })
 
   it('AI で絞り込むと、種類ごとの比較もその AI の回答だけになる', async () => {

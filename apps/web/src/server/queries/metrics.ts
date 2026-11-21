@@ -47,20 +47,30 @@ export type MetricsFilter = {
   today?: string
 }
 
-/** その組織の、指定した種類の質問への回答だけにする */
-function responsesOfKind(organizationId: string, kind: PromptKind): SQL {
+/** このブランド（その組織のもの）の、指定した種類の質問への回答だけにする */
+function responsesOfKind(organizationId: string, brandId: string, kind: PromptKind): SQL {
   return inArray(
     response.promptId,
     db
       .select({ id: prompt.id })
       .from(prompt)
-      .where(and(eq(prompt.kind, kind), inOrganization(prompt.brandId, organizationId))),
+      .where(
+        and(
+          eq(prompt.kind, kind),
+          eq(prompt.brandId, brandId),
+          inOrganization(prompt.brandId, organizationId),
+        ),
+      ),
   )
 }
+
+/** 回答の質問を結合する。run と同じブランドの質問に限る（別のブランドの質問の文面や種類を混ぜない） */
+const promptOfResponse = and(eq(prompt.id, response.promptId), eq(prompt.brandId, run.brandId))
 
 /**
  * ダッシュボードの数字をまとめて返す。絞り込み（AI・種類・質問）はすべての数字に同じように効く。
  * ただし byKind（種類ごとの比較）だけは、種類の絞り込みを無視して両方の種類を出す。
+ * 質問を 1 つ選んでいるときは、比べるものがない（1 つの質問の種類は 1 つ）ので byKind は null。
  * - trend: 言及率の推移（日ごとに「直近 window 日分」をまとめた割合と 95% 信頼区間）
  * - shareOfVoice: 直近 window 日の、名前ごとの言及率（自社・競合・未登録）
  * - topDomains: 直近 window 日に引用されたドメインの上位
@@ -87,7 +97,7 @@ export async function getBrandMetrics(
   if (counted) narrowing.push(counted)
   if (filter.provider) narrowing.push(eq(response.provider, filter.provider))
   if (filter.promptId) narrowing.push(eq(response.promptId, filter.promptId))
-  const kindNarrowing = filter.kind ? [responsesOfKind(organizationId, filter.kind)] : []
+  const kindNarrowing = filter.kind ? [responsesOfKind(organizationId, brandId, filter.kind)] : []
 
   const scope = (since: string, options: { ignoreKind?: boolean } = {}) =>
     and(
@@ -207,7 +217,7 @@ export async function getBrandMetrics(
     .from(response)
     .innerJoin(run, eq(run.id, response.runId))
     .innerJoin(analysis, eq(analysis.responseId, response.id))
-    .innerJoin(prompt, eq(prompt.id, response.promptId))
+    .innerJoin(prompt, promptOfResponse)
     .where(windowScope)
     .groupBy(
       response.promptId,
@@ -252,23 +262,7 @@ export async function getBrandMetrics(
   }))
 
   // 5. 質問の種類ごとの言及率（種類の絞り込みは無視して、両方を並べて比べられるようにする）
-  const kindRows = await db
-    .select({
-      kind: prompt.kind,
-      n: sql<number>`count(*)::int`,
-      mentioned: sql<number>`count(*) filter (where ${analysis.brandMentioned})::int`,
-    })
-    .from(response)
-    .innerJoin(run, eq(run.id, response.runId))
-    .innerJoin(analysis, eq(analysis.responseId, response.id))
-    .innerJoin(prompt, eq(prompt.id, response.promptId))
-    .where(scope(windowFrom, { ignoreKind: true }))
-    .groupBy(prompt.kind)
-  const byKind = PROMPT_KINDS.map((kind) => {
-    const row = kindRows.find((r) => r.kind === kind)
-    const n = row?.n ?? 0
-    return { kind, n, ...wilsonInterval(row?.mentioned ?? 0, n) }
-  })
+  const byKind = filter.promptId ? null : await getByKind(scope(windowFrom, { ignoreKind: true }))
 
   const latest = trend.all.at(-1) ?? null
   return {
@@ -291,3 +285,24 @@ export async function getBrandMetrics(
 }
 
 export type BrandMetrics = Awaited<ReturnType<typeof getBrandMetrics>>
+
+/** 質問の種類ごとの言及率。どちらの種類も（回答が 0 件でも）並べて返す */
+async function getByKind(where: SQL | undefined) {
+  const rows = await db
+    .select({
+      kind: prompt.kind,
+      n: sql<number>`count(*)::int`,
+      mentioned: sql<number>`count(*) filter (where ${analysis.brandMentioned})::int`,
+    })
+    .from(response)
+    .innerJoin(run, eq(run.id, response.runId))
+    .innerJoin(analysis, eq(analysis.responseId, response.id))
+    .innerJoin(prompt, promptOfResponse)
+    .where(where)
+    .groupBy(prompt.kind)
+  return PROMPT_KINDS.map((kind) => {
+    const row = rows.find((r) => r.kind === kind)
+    const n = row?.n ?? 0
+    return { kind, n, ...wilsonInterval(row?.mentioned ?? 0, n) }
+  })
+}
