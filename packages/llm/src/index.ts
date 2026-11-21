@@ -25,8 +25,18 @@ export {
   type Extractor,
 } from './extract/types'
 export { createLlmPolicyWith, type LlmMode, type LlmPolicy, liveModeFor } from './policy'
-export { estimateCostUsd } from './pricing'
-export { createFakeProvider, FAKE_MODEL_PREFIX, isFakeModel } from './providers/fake'
+export {
+  estimateCostUsd,
+  GEMINI_FREE_SEARCHES_PER_MONTH,
+  hasFreeSearchTier,
+  pricingModelName,
+} from './pricing'
+export {
+  createFakeProvider,
+  DEMO_MODEL_PREFIX,
+  FAKE_MODEL_PREFIX,
+  isFakeModel,
+} from './providers/fake'
 export { createGeminiProvider, DEFAULT_GEMINI_MODEL } from './providers/gemini'
 export { createOpenAIProvider, DEFAULT_OPENAI_MODEL } from './providers/openai'
 export type { AnswerProvider, AskInput, AskResult, ProviderId, Source } from './types'

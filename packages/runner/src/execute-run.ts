@@ -8,12 +8,15 @@ import {
 } from '@llmo/db'
 import {
   type AskResult,
+  DEMO_MODEL_PREFIX,
   type Extractor,
   estimateCostUsd,
+  FAKE_MODEL_PREFIX,
+  hasFreeSearchTier,
   type ProviderId,
   type Providers,
 } from '@llmo/llm'
-import { and, eq, gte, isNull, or, sql } from 'drizzle-orm'
+import { and, eq, gte, isNull, notLike, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
@@ -245,6 +248,7 @@ async function saveSuccess(
   result: AskResult,
   brandDomain: string | null,
 ) {
+  const at = new Date()
   const values = {
     runId,
     promptId: task.promptId,
@@ -257,7 +261,12 @@ async function saveSuccess(
     latencyMs: result.latencyMs,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
-    costUsd: estimateCostUsd(result),
+    searchCount: result.searchCount,
+    costUsd: estimateCostUsd({
+      ...result,
+      at,
+      searchesUsedThisMonth: await countSearchesThisMonth(db, result, at),
+    }),
   }
 
   await db.transaction(async (tx) => {
@@ -279,6 +288,36 @@ async function saveSuccess(
       await tx.insert(citation).values(citations.map((c) => ({ ...c, responseId: saved.id })))
     }
   })
+}
+
+/**
+ * 検索の無料枠の見積もりのため、当月（UTC）にアプリ全体で使った検索の回数（search_count の合計）を数える。
+ * 無料枠のないモデルは undefined。
+ * - 無料枠は API キー（＝アプリ全体）で共有されるので、組織では絞らない
+ * - 料金表にあるかどうかに関係なく、同じ provider の本物の回答をすべて数える（フェイクとデモは本物の API を使っていないので除く）
+ * - 検索回数を保存する前の回答（search_count が null）は、1 回として数える
+ * - 同時に保存される回答どうしは互いを数えない（既知の制限。pricing.ts のコメントを参照）
+ */
+async function countSearchesThisMonth(
+  db: Db,
+  result: AskResult,
+  at: Date,
+): Promise<number | undefined> {
+  if (result.searchCount === 0 || !hasFreeSearchTier({ ...result, at })) return undefined
+  const monthStart = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1))
+  const [row] = await db
+    .select({ searches: sql<number>`coalesce(sum(coalesce(${response.searchCount}, 1)), 0)::int` })
+    .from(response)
+    .where(
+      and(
+        eq(response.provider, result.provider),
+        notLike(response.model, `${FAKE_MODEL_PREFIX}%`),
+        notLike(response.model, `${DEMO_MODEL_PREFIX}%`),
+        eq(response.status, 'succeeded'),
+        gte(response.createdAt, monthStart),
+      ),
+    )
+  return row?.searches ?? 0
 }
 
 async function saveFailure(db: Db, runId: string, task: Task, model: string, error: unknown) {

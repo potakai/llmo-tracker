@@ -1,7 +1,13 @@
 import type { LlmMode } from '@llmo/llm'
 import Link from 'next/link'
 import { FilterBar } from '@/components/filter-bar'
-import { formatDate, PROVIDER_LABEL, percent, RUN_STATUS_LABEL } from '@/components/labels'
+import {
+  COST_ESTIMATE_NOTE,
+  formatDate,
+  PROVIDER_LABEL,
+  percent,
+  RUN_STATUS_LABEL,
+} from '@/components/labels'
 import { RunButton } from '@/components/run-button'
 import { ShareOfVoice } from '@/components/share-of-voice'
 import { TrendChart } from '@/components/trend-chart'
@@ -290,10 +296,11 @@ function RunHistory({ brandId, runs, llmMode }: RunHistoryProps) {
       </h2>
       {hasExcludedSamples && (
         <p className="mb-3 text-sm text-ink-soft">
-          「サンプル」の計測は、本物の AI に切り替える前にサンプルの AI
-          で行ったものです。上の数字には入れていません（回答は「回答を見る」から確認できます）。
+          「サンプル」の付いた計測には、本物の AI に切り替える前にサンプルの AI
+          で作った回答が含まれています。サンプルの回答だけを集計から除外しています（回答は「回答を見る」から確認できます）。
         </p>
       )}
+      {runs.length > 0 && <p className="mb-3 text-sm text-ink-soft">{COST_ESTIMATE_NOTE}</p>}
       {runs.length === 0 ? (
         <p className="text-sm text-ink-soft">まだ計測していません。</p>
       ) : (

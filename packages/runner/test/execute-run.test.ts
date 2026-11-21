@@ -26,6 +26,10 @@ describe('executeRun', () => {
     expect(rows.every((r) => r.answerText && r.model.startsWith('fake-'))).toBe(true)
     // フェイクのモデルは料金表にないので費用は不明（null）
     expect(rows.every((r) => r.costUsd === null)).toBe(true)
+    // 検索回数は AI に関係なく保存する（フェイクは 1 回答につき 1 回検索したことにしている）
+    expect(rows.filter((r) => r.provider === 'openai').map((r) => r.searchCount)).toEqual(
+      Array(6).fill(1),
+    )
 
     const cites = await db.select().from(citation).where(eq(citation.responseId, rows[0]!.id))
     expect(cites.length).toBeGreaterThan(0)
