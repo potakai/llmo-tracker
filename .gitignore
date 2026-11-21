@@ -14,3 +14,6 @@ next-env.d.ts
 
 # Playwright のログイン状態
 **/playwright/.auth
+
+# 抽出の評価の結果（packages/llm/eval/README.md）
+packages/llm/eval/results/

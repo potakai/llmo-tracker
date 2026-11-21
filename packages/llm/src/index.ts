@@ -55,12 +55,17 @@ export function createProvidersFromEnv(env: Record<string, string | undefined>):
 
 export const DEFAULT_EXTRACTOR_MODEL = 'gpt-5.4-mini'
 
+/** 抽出に使うモデル。EXTRACTOR_MODEL がなければ既定値（本番と評価 CLI で同じにする） */
+export function extractorModelFromEnv(env: Record<string, string | undefined>): string {
+  return env.EXTRACTOR_MODEL || DEFAULT_EXTRACTOR_MODEL
+}
+
 /** 抽出器。LLM_MODE=live なら LLM、それ以外はルールベース（費用ゼロ） */
 export function createExtractorFromEnv(env: Record<string, string | undefined>): Extractor {
   if (env.LLM_MODE !== 'live') return createRuleBasedExtractor()
   const apiKey = env.OPENAI_API_KEY
   if (!apiKey) throw new Error('LLM_MODE=live には OPENAI_API_KEY が必要です')
-  const modelId = env.EXTRACTOR_MODEL || DEFAULT_EXTRACTOR_MODEL
+  const modelId = extractorModelFromEnv(env)
   const openai = createOpenAI({ apiKey })
   return createLlmExtractor({ model: openai.responses(modelId), modelId })
 }
