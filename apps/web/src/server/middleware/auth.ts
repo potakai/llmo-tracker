@@ -1,4 +1,5 @@
 import { member } from '@llmo/db'
+import type { LlmMode } from '@llmo/llm'
 import { and, eq } from 'drizzle-orm'
 import { createMiddleware } from 'hono/factory'
 import { auth } from '@/lib/auth'
@@ -47,3 +48,13 @@ export const blockDemoWrites = createMiddleware<OrgEnv>(async (c, next) => {
   if (c.var.isDemo && c.req.method !== 'GET') throw errors.demoReadOnly()
   await next()
 })
+
+/**
+ * 組織が本物の AI で計測しているか（live / fake）を c.var.llmMode に載せる。requireOrg のあとに置く。
+ * 判定は createLlmPolicy の modeFor を受け取って使う（環境変数を読む場所を増やさない）
+ */
+export const resolveLlmMode = (modeFor: (organizationId: string) => LlmMode) =>
+  createMiddleware<OrgEnv>(async (c, next) => {
+    c.set('llmMode', modeFor(c.var.organizationId))
+    await next()
+  })

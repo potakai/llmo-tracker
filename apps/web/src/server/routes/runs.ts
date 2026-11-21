@@ -40,14 +40,14 @@ export const createRunRoutes = (deps: AppDeps) =>
     .get('/:brandId/runs', validate('param', brandParams), async (c) => {
       const { brandId } = c.req.valid('param')
       await findBrandInOrg(c.var.organizationId, brandId)
-      return c.json({ runs: await listRuns(brandId) })
+      return c.json({ runs: await listRuns(c.var.organizationId, brandId) })
     })
 
     // 実行の詳細（回答・引用元・分析結果つき）
     .get('/:brandId/runs/:runId', validate('param', runParams), async (c) => {
       const { brandId, runId } = c.req.valid('param')
       await findBrandInOrg(c.var.organizationId, brandId)
-      const found = await getRunDetail(brandId, runId)
+      const found = await getRunDetail(c.var.organizationId, brandId, runId)
       if (!found) throw errors.notFound('実行')
       return c.json({ run: found })
     })

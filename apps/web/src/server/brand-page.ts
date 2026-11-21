@@ -23,7 +23,7 @@ export const loadBrandForPage = cache(async (rawBrandId: string) => {
     ])
     // 本物の AI で計測している組織か（それ以外はフェイクの回答で、数字は動作確認用）
     const llmMode = getLlmPolicy().modeFor(organizationId)
-    return { brand, isDemo, llmMode }
+    return { organizationId, brand, isDemo, llmMode }
   } catch (error) {
     if (error instanceof AppError && error.status === 404) notFound()
     throw error

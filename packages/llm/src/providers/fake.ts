@@ -1,5 +1,13 @@
 import type { AnswerProvider, AskInput, AskResult, ProviderId } from '../types'
 
+/** フェイクのプロバイダーが名乗るモデル名の接頭辞（`fake-openai` など）。DB の response.model に残る */
+export const FAKE_MODEL_PREFIX = 'fake-'
+
+/** フェイクの回答か（モデル名で判定する）。SQL で絞るときも FAKE_MODEL_PREFIX を使い、判定をここに集める */
+export function isFakeModel(model: string): boolean {
+  return model.startsWith(FAKE_MODEL_PREFIX)
+}
+
 /**
  * API を叩かないフェイク。開発・テスト・公開デモで使う（費用がかからない）。
  * 乱数ではなく「質問文＋呼ばれた回数」のハッシュで回答を組み立てるので、
@@ -14,9 +22,10 @@ export function createFakeProvider(
   } = {},
 ): AnswerProvider {
   let callCount = 0
+  const model = `${FAKE_MODEL_PREFIX}${id}`
   return {
     id,
-    model: `fake-${id}`,
+    model,
     async ask(input) {
       callCount += 1
       if (options.delayMs) await new Promise((r) => setTimeout(r, options.delayMs))
@@ -36,7 +45,7 @@ export function createFakeProvider(
 
       const result: AskResult = {
         provider: id,
-        model: `fake-${id}`,
+        model,
         text,
         sources: picked.map((name, i) => ({
           url: `https://example.com/${encodeURIComponent(name)}?ref=${i}`,

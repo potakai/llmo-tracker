@@ -2,11 +2,15 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { formatDate, RUN_STATUS_LABEL } from '@/components/labels'
 import { MarkLegend, ResponseItem } from '@/components/response-item'
+import { sampleRunNotice } from '@/lib/sample-run'
 import { loadBrandForPage } from '@/server/brand-page'
 import { getRunDetail, type RunDetail } from '@/server/queries/runs'
 import { runParams } from '@/server/schemas/brand'
 
 type ResponseRow = RunDetail['responses'][number]
+
+const NOTICE_CLASS =
+  'mt-3 rounded-[var(--radius-box)] border border-rule bg-surface px-4 py-3 text-sm'
 
 export default async function RunPage({
   params,
@@ -14,11 +18,15 @@ export default async function RunPage({
   params: Promise<{ brandId: string; runId: string }>
 }) {
   const raw = await params
-  const { brand } = await loadBrandForPage(raw.brandId)
+  const { organizationId, brand, llmMode } = await loadBrandForPage(raw.brandId)
   const parsed = runParams.safeParse(raw)
   if (!parsed.success) notFound()
-  const run = await getRunDetail(brand.id, parsed.data.runId)
+  const run = await getRunDetail(organizationId, brand.id, parsed.data.runId)
   if (!run) notFound()
+  const notice = sampleRunNotice(
+    run.responses.map((r) => r.model),
+    llmMode,
+  )
 
   // 質問ごとにまとめる（並びは質問の登録順）
   const byPrompt = new Map<string, { text: string; responses: ResponseRow[] }>()
@@ -42,6 +50,20 @@ export default async function RunPage({
           {RUN_STATUS_LABEL[run.status]}。回答 {run.responses.length} 件、費用の目安 $
           {run.totalCostUsd.toFixed(2)}
         </p>
+        {notice?.kind === 'all' && (
+          <p className={NOTICE_CLASS}>
+            これは<strong>サンプルの AI</strong>
+            で行った計測です。ChatGPT や Gemini には実際には聞いておらず、回答は作り物です。
+            {llmMode === 'live' && '計測結果の数字には入れていません。'}
+          </p>
+        )}
+        {notice?.kind === 'mixed' && (
+          <p className={NOTICE_CLASS}>
+            この計測には<strong>サンプルの回答</strong>が{' '}
+            <span className="num">{notice.sampleCount}</span>{' '}
+            件含まれていて、その分は集計から外しています。
+          </p>
+        )}
         <div className="mt-4">
           <MarkLegend />
         </div>

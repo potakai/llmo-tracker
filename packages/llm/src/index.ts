@@ -26,7 +26,7 @@ export {
 } from './extract/types'
 export { createLlmPolicyWith, type LlmMode, type LlmPolicy, liveModeFor } from './policy'
 export { estimateCostUsd } from './pricing'
-export { createFakeProvider } from './providers/fake'
+export { createFakeProvider, FAKE_MODEL_PREFIX, isFakeModel } from './providers/fake'
 export { createGeminiProvider, DEFAULT_GEMINI_MODEL } from './providers/gemini'
 export { createOpenAIProvider, DEFAULT_OPENAI_MODEL } from './providers/openai'
 export type { AnswerProvider, AskInput, AskResult, ProviderId, Source } from './types'
