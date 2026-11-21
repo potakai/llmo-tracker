@@ -54,6 +54,10 @@ export function OnboardingForm({ hasOrganization }: { hasOrganization: boolean }
     setPending(false)
     const body = await res.json()
     if ('brand' in body) {
+      // Next.js は画面を移るとき、新しいページ（page.tsx）の上端が画面内に見えていればスクロール位置を引き継ぐ。
+      // ブランドの画面は page.tsx の上に案内や見出し（layout.tsx）があるので、フォームの下までスクロールしたまま
+      // 移ると、それらが画面の上にはみ出して見えなくなる。先に一番上へ戻しておく
+      window.scrollTo(0, 0)
       router.push(`/app/brands/${body.brand.id}`)
       return
     }
