@@ -1,19 +1,20 @@
 import { prompt } from '@llmo/db'
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { loadBrandForPage } from '@/server/brand-page'
+import { inOrganization } from '@/server/queries/tenant'
 import { MAX_ACTIVE_PROMPTS, MAX_COMPETITORS } from '@/server/schemas/brand'
 import { BrandInfoForm } from './brand-info-form'
 import { CompetitorsEditor } from './competitors-editor'
 import { PromptsEditor } from './prompts-editor'
 
 export default async function SettingsPage({ params }: { params: Promise<{ brandId: string }> }) {
-  const { brand, isDemo } = await loadBrandForPage((await params).brandId)
+  const { organizationId, brand, isDemo } = await loadBrandForPage((await params).brandId)
   // 設定ではアーカイブした質問も見せる（元に戻せるように）
   const prompts = await db
-    .select({ id: prompt.id, text: prompt.text, archivedAt: prompt.archivedAt })
+    .select({ id: prompt.id, text: prompt.text, kind: prompt.kind, archivedAt: prompt.archivedAt })
     .from(prompt)
-    .where(eq(prompt.brandId, brand.id))
+    .where(and(eq(prompt.brandId, brand.id), inOrganization(prompt.brandId, organizationId)))
     .orderBy(asc(prompt.createdAt))
 
   return (

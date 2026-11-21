@@ -4,17 +4,19 @@ import { FilterBar } from '@/components/filter-bar'
 import {
   COST_ESTIMATE_NOTE,
   formatDate,
+  PROMPT_KIND_LABEL,
   PROVIDER_LABEL,
   percent,
   RUN_STATUS_LABEL,
 } from '@/components/labels'
+import { PromptKindBadge } from '@/components/prompt-kind-badge'
 import { RunButton } from '@/components/run-button'
 import { ShareOfVoice } from '@/components/share-of-voice'
 import { TrendChart } from '@/components/trend-chart'
 import { filterHref, parseFilter } from '@/lib/filters'
 import { toTrendRows } from '@/lib/trend'
 import { loadBrandForPage } from '@/server/brand-page'
-import { getBrandMetrics } from '@/server/queries/metrics'
+import { type BrandMetrics, getBrandMetrics } from '@/server/queries/metrics'
 import { listRuns } from '@/server/queries/runs'
 
 export default async function BrandDashboard({
@@ -30,6 +32,7 @@ export default async function BrandDashboard({
     getBrandMetrics(organizationId, brand.id, llmMode, {
       days: filter.days,
       provider: filter.ai,
+      kind: filter.kind,
       promptId: filter.q,
     }),
     listRuns(organizationId, brand.id, 10),
@@ -42,6 +45,7 @@ export default async function BrandDashboard({
   const selectedPrompt = filter.q ? brand.prompts.find((p) => p.id === filter.q) : undefined
   const scope = [
     filter.ai ? PROVIDER_LABEL[filter.ai] : null,
+    filter.kind && !selectedPrompt ? `${PROMPT_KIND_LABEL[filter.kind]}の質問` : null,
     selectedPrompt ? `「${selectedPrompt.text}」` : null,
   ]
     .filter(Boolean)
@@ -93,6 +97,8 @@ export default async function BrandDashboard({
                 この条件では、直近7日の回答がありません。期間や絞り込みを変えてみてください。
               </p>
             )}
+            {/* 選んだ種類の回答が 0 件でも、もう一方と比べられるように出す（質問を選んでいるときは null） */}
+            {metrics.byKind && <KindComparison byKind={metrics.byKind} current={filter.kind} />}
           </div>
           <RunButton
             brandId={brand.id}
@@ -124,7 +130,7 @@ export default async function BrandDashboard({
         <FilterBar
           path={path}
           current={filter}
-          prompts={brand.prompts.map((p) => ({ id: p.id, text: p.text }))}
+          prompts={brand.prompts.map((p) => ({ id: p.id, text: p.text, kind: p.kind }))}
         />
       </section>
 
@@ -174,6 +180,7 @@ export default async function BrandDashboard({
                 {metrics.byPrompt.map((p) => (
                   <tr key={p.promptId}>
                     <td className="px-4 py-2">
+                      <PromptKindBadge kind={p.kind} className="mr-2" />
                       <Link
                         href={filterHref(`${path}/prompts/${p.promptId}`, filter, { q: undefined })}
                         className="underline underline-offset-4"
@@ -250,6 +257,34 @@ export default async function BrandDashboard({
         のアプリで人が見る回答（検索の有無、履歴、地域などで変わる）と同じとは限りません。「名前が出た」「おすすめされた」「自社サイトが引用された」は、それぞれ別の指標として見てください。
       </p>
     </div>
+  )
+}
+
+/**
+ * 聞き方（種類）ごとの言及率を並べる。例：「質問文 52% ／ キーワード 31%」。
+ * 種類で絞り込んでいても、比べられるように両方出す
+ */
+type KindRates = NonNullable<BrandMetrics['byKind']>
+
+function KindComparison(props: {
+  byKind: KindRates
+  current: KindRates[number]['kind'] | undefined
+}) {
+  if (props.byKind.every((k) => k.n === 0)) return null
+  return (
+    <p className="mt-2 text-ink-soft">
+      聞き方別では、
+      {props.byKind.map((k, i) => (
+        <span key={k.kind}>
+          {i > 0 && ' ／ '}
+          <span className={`num ${props.current === k.kind ? 'font-bold text-ink' : ''}`}>
+            {PROMPT_KIND_LABEL[k.kind]} {percent(k.rate)}
+          </span>
+          <span className="num text-sm">（回答 {k.n} 件）</span>
+        </span>
+      ))}
+      。
+    </p>
   )
 }
 

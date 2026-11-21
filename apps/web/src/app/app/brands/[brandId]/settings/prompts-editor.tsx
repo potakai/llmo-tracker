@@ -1,13 +1,20 @@
 'use client'
 
 import { type FormEvent, useRef } from 'react'
+import { PROMPT_KIND_LABEL } from '@/components/labels'
+import { PromptKindBadge } from '@/components/prompt-kind-badge'
 import { api } from '@/lib/api-client'
 import { useAction } from '@/lib/use-action'
 
-type Prompt = { id: string; text: string; archived: boolean }
+type PromptKind = keyof typeof PROMPT_KIND_LABEL
+type Prompt = { id: string; text: string; kind: PromptKind; archived: boolean }
+
+const KINDS = Object.entries(PROMPT_KIND_LABEL) as [PromptKind, string][]
+const isPromptKind = (value: unknown): value is PromptKind =>
+  typeof value === 'string' && value in PROMPT_KIND_LABEL
 
 /**
- * 質問の追加・アーカイブ・復元。
+ * 質問の追加・種類の変更・アーカイブ・復元。
  * 文面の書き換えはできない（変えると過去の計測と比べられなくなる）。変えたいときは、
  * 古い質問をアーカイブして新しく追加する。
  */
@@ -26,8 +33,13 @@ export function PromptsEditor(props: {
 
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const text = String(new FormData(event.currentTarget).get('text') ?? '')
-    const ok = await run(() => api.brands[':brandId'].prompts.$post({ param, json: { text } }))
+    const form = new FormData(event.currentTarget)
+    const text = String(form.get('text') ?? '')
+    const rawKind = form.get('kind')
+    const kind = isPromptKind(rawKind) ? rawKind : 'question'
+    const ok = await run(() =>
+      api.brands[':brandId'].prompts.$post({ param, json: { text, kind } }),
+    )
     if (ok) formRef.current?.reset()
   }
 
@@ -42,6 +54,11 @@ export function PromptsEditor(props: {
         </p>
       </div>
       <p className="mt-1 text-sm text-ink-soft">
+        種類は、AI
+        への聞き方です。「質問文」は「〜はどこ？」のような文、「キーワード」は「会計ソフト
+        安い」のように単語を並べたもの。計測結果で、種類ごとの言及率を比べられます（種類はあとから変えられます）。
+      </p>
+      <p className="mt-1 text-sm text-ink-soft">
         文面を変えると過去の計測と比べられなくなるので、変えたいときはアーカイブして新しく追加してください。
         アーカイブした質問の過去の回答は残ります。
       </p>
@@ -49,7 +66,34 @@ export function PromptsEditor(props: {
       <ul className="panel mt-4 divide-y divide-rule">
         {active.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-            <span className="min-w-0">{p.text}</span>
+            <span className="min-w-0">
+              <PromptKindBadge kind={p.kind} className="mr-2" />
+              {p.text}
+            </span>
+            <label className="flex shrink-0 items-center gap-1.5 text-sm">
+              <span className="sr-only">「{p.text}」の種類</span>
+              <select
+                className="field w-32 py-1 text-sm"
+                value={p.kind}
+                disabled={props.readOnly || pending}
+                onChange={(event) => {
+                  const kind = event.target.value
+                  if (!isPromptKind(kind)) return
+                  run(() =>
+                    api.brands[':brandId'].prompts[':promptId'].$patch({
+                      param: { ...param, promptId: p.id },
+                      json: { kind },
+                    }),
+                  )
+                }}
+              >
+                {KINDS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               className="btn-quiet shrink-0 px-3 py-1 text-sm"
@@ -74,6 +118,22 @@ export function PromptsEditor(props: {
       </ul>
 
       <form ref={formRef} onSubmit={add} className="mt-3 flex flex-col gap-2 sm:flex-row">
+        <label htmlFor="new-prompt-kind" className="sr-only">
+          追加する質問の種類
+        </label>
+        <select
+          id="new-prompt-kind"
+          name="kind"
+          defaultValue="question"
+          className="field shrink-0 sm:w-auto"
+          disabled={props.readOnly || full}
+        >
+          {KINDS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
         <label htmlFor="new-prompt" className="sr-only">
           追加する質問
         </label>
@@ -110,7 +170,10 @@ export function PromptsEditor(props: {
           <ul className="panel mt-2 divide-y divide-rule">
             {archived.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <span className="min-w-0 text-ink-soft">{p.text}</span>
+                <span className="min-w-0 text-ink-soft">
+                  <PromptKindBadge kind={p.kind} className="mr-2" />
+                  {p.text}
+                </span>
                 <button
                   type="button"
                   className="btn-quiet shrink-0 px-3 py-1 text-sm"

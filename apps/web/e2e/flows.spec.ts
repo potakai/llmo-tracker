@@ -13,6 +13,16 @@ test('デモアカウントでログインすると、30日分のダッシュボ
   // デモにはデモの案内だけを出す（サンプルの AI の案内は出さない）
   await expect(page.getByText(/サンプルの AI/)).toHaveCount(0)
 
+  // 聞き方（質問文・キーワード）ごとの言及率を比べられ、種類で絞り込める
+  await expect(page.getByText(/聞き方別では、/)).toBeVisible()
+  await page.getByRole('link', { name: 'キーワード', exact: true }).click()
+  await expect(page).toHaveURL(/kind=keyword/)
+  await expect(page.getByText(/直近7日、キーワードの質問の回答/)).toBeVisible()
+  // 質問を 1 つ選ぶと、比べるものがないので比較は出さない
+  await page.getByRole('combobox', { name: /質問/ }).selectOption({ index: 1 })
+  await expect(page).toHaveURL(/q=/)
+  await expect(page.getByText(/聞き方別では、/)).toHaveCount(0)
+
   // 実行の詳細で、回答の中身が見られる
   await page.getByRole('link', { name: '回答を見る' }).first().click()
   await expect(page.getByText('中小企業向けのおすすめ会計ソフトは？').first()).toBeVisible()
@@ -59,6 +69,14 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByRole('button', { name: '今すぐ計測' }).click()
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(/直近7日、AI の回答 20 件のうち/)).toBeVisible()
+
+  // キーワードの質問はまだないが、絞り込んでも種類ごとの比較は出る
+  await page.getByRole('link', { name: 'キーワード', exact: true }).click()
+  await expect(page).toHaveURL(/kind=keyword/)
+  await expect(page.getByText(/この条件では、直近7日の回答がありません/)).toBeVisible()
+  await expect(
+    page.getByText(/聞き方別では、質問文 \d+%（回答 20 件）\s*／ キーワード —（回答 0 件）/),
+  ).toBeVisible()
 })
 
 test.describe('デモアカウントでログイン済み', () => {
@@ -119,7 +137,7 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await page.getByRole('link', { name: '設定' }).click()
 
   // 質問を追加して、元の質問をアーカイブ
-  await page.getByLabel('追加する質問').fill('質問その2')
+  await page.getByLabel('追加する質問', { exact: true }).fill('質問その2')
   await page.getByRole('button', { name: '質問を追加' }).click()
   await expect(page.getByText('2 / 10 個')).toBeVisible()
   await page
@@ -131,9 +149,23 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await expect(page.getByText('アーカイブした質問（1 個）')).toBeVisible()
 
   // 同じ質問は追加できない
-  await page.getByLabel('追加する質問').fill('質問その2')
+  await page.getByLabel('追加する質問', { exact: true }).fill('質問その2')
   await page.getByRole('button', { name: '質問を追加' }).click()
   await expect(page.getByText('同じ質問がすでにあります')).toBeVisible()
+
+  // キーワードの質問を追加し、既存の質問の種類も変える
+  await page.getByLabel('追加する質問の種類').selectOption('keyword')
+  await page.getByLabel('追加する質問', { exact: true }).fill('会計ソフト 比較')
+  await page.getByRole('button', { name: '質問を追加' }).click()
+  await expect(page.getByText('2 / 10 個')).toBeVisible()
+  await expect(page.getByLabel('「会計ソフト 比較」の種類')).toHaveValue('keyword')
+  const saved = page.waitForResponse(
+    (res) => res.request().method() === 'PATCH' && /\/prompts\//.test(res.url()),
+  )
+  await page.getByLabel('「質問その2」の種類').selectOption('keyword')
+  expect((await saved).status()).toBe(200)
+  await page.reload()
+  await expect(page.getByLabel('「質問その2」の種類')).toHaveValue('keyword')
 
   // 競合の名前を変えて、削除する
   await page.getByRole('button', { name: '名前を変える' }).click()

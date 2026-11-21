@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
+import { updatePromptKind } from '../queries/prompts'
 import {
   brandParams,
   competitorInput,
@@ -14,6 +15,7 @@ import {
   promptParams,
   updateBrandInput,
   updateCompetitorInput,
+  updatePromptInput,
 } from '../schemas/brand'
 import { validate } from '../validator'
 import { findBrandInOrg } from './brands'
@@ -120,7 +122,7 @@ export const settingsRoutes = new Hono<OrgEnv>()
     async (c) => {
       const { brandId } = c.req.valid('param')
       await findBrandInOrg(c.var.organizationId, brandId)
-      const { text } = c.req.valid('json')
+      const { text, kind } = c.req.valid('json')
       const created = await db.transaction(async (tx) => {
         await lockBrand(tx, brandId)
         await assertPromptSlot(tx, brandId)
@@ -130,10 +132,26 @@ export const settingsRoutes = new Hono<OrgEnv>()
           .where(and(eq(prompt.brandId, brandId), isNull(prompt.archivedAt), eq(prompt.text, text)))
           .limit(1)
         if (duplicate) throw errors.duplicate('質問')
-        const [row] = await tx.insert(prompt).values({ brandId, text }).returning()
+        const [row] = await tx.insert(prompt).values({ brandId, text, kind }).returning()
         return row
       })
       return c.json({ prompt: created }, 201)
+    },
+  )
+
+  // 質問の種類を変更（文面は変えられない）
+  .patch(
+    '/:brandId/prompts/:promptId',
+    validate('param', promptParams),
+    validate('json', updatePromptInput),
+    async (c) => {
+      const { brandId, promptId } = c.req.valid('param')
+      const organizationId = c.var.organizationId
+      await findBrandInOrg(organizationId, brandId)
+      const { kind } = c.req.valid('json')
+      const updated = await updatePromptKind(organizationId, brandId, promptId, kind)
+      if (!updated) throw errors.notFound('質問')
+      return c.json({ prompt: updated })
     },
   )
 

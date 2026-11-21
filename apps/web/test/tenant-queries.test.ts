@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getBrandMetrics } from '@/server/queries/metrics'
-import { findPromptInBrand, listPromptResponses } from '@/server/queries/prompts'
+import { findPromptInBrand, listPromptResponses, updatePromptKind } from '@/server/queries/prompts'
 import { getRunDetail, listRuns } from '@/server/queries/runs'
 import { TestClient } from './helpers'
 
@@ -54,6 +54,13 @@ describe('クエリはテナントの境界（brand.organization_id）で絞る'
     expect(metrics.shareOfVoice).toEqual([])
     expect(metrics.topDomains).toEqual([])
     expect(metrics.byPrompt).toEqual([])
+    expect(metrics.byKind?.map((k) => k.n)).toEqual([0, 0])
+    // 種類で絞り込んでも、他の組織の回答は入らない
+    const filtered = await getBrandMetrics(ids.otherOrgId, ids.brandId, 'fake', {
+      days: 7,
+      kind: 'question',
+    })
+    expect(filtered.latest?.n).toBe(0)
   })
 
   it('他の組織の ID を渡すと、計測の一覧は空、詳細は見つからない', async () => {
@@ -68,5 +75,17 @@ describe('クエリはテナントの境界（brand.organization_id）で絞る'
 
     expect(await findPromptInBrand(ids.otherOrgId, ids.brandId, ids.promptId)).toBeNull()
     expect(await listPromptResponses(ids.otherOrgId, ids.promptId, 'fake')).toEqual([])
+  })
+
+  it('他の組織の ID を渡すと、質問の種類は変わらない。持ち主の組織の ID なら変わる', async () => {
+    const ids = await setupTwoOrganizations()
+
+    expect(await updatePromptKind(ids.otherOrgId, ids.brandId, ids.promptId, 'keyword')).toBeNull()
+    expect(await findPromptInBrand(ids.ownerOrgId, ids.brandId, ids.promptId)).toMatchObject({
+      kind: 'question',
+    })
+
+    const updated = await updatePromptKind(ids.ownerOrgId, ids.brandId, ids.promptId, 'keyword')
+    expect(updated?.kind).toBe('keyword')
   })
 })

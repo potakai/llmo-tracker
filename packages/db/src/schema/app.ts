@@ -61,9 +61,13 @@ export const resultStatusEnum = pgEnum('result_status', ['succeeded', 'failed'])
 export const sentimentEnum = pgEnum('sentiment', ['positive', 'neutral', 'negative'])
 /** unknown = まだ登録されていない会社・サービス */
 export const entityTypeEnum = pgEnum('entity_type', ['brand', 'competitor', 'unknown'])
+/** 質問の聞き方。question = 質問文（「〜はどこ？」）、keyword = 検索のように単語を並べたもの */
+export const promptKindEnum = pgEnum('prompt_kind', ['question', 'keyword'])
 
 export const PROVIDERS = providerEnum.enumValues
 export type Provider = (typeof PROVIDERS)[number]
+export const PROMPT_KINDS = promptKindEnum.enumValues
+export type PromptKind = (typeof PROMPT_KINDS)[number]
 
 // ---------------------------------------------------------------------------
 // brand: 計測するブランド
@@ -128,6 +132,8 @@ export const prompt = pgTable(
       .notNull()
       .references(() => brand.id, { onDelete: 'cascade' }),
     text: text().notNull(),
+    /** 聞き方の種類。文面と違って、あとから変えてもよい（過去の回答の意味は変わらない） */
+    kind: promptKindEnum().notNull().default('question'),
     archivedAt: timestamp({ withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

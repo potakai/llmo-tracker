@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { FilterBar } from '@/components/filter-bar'
 import { formatDate, PROVIDER_LABEL, percent } from '@/components/labels'
+import { PromptKindBadge } from '@/components/prompt-kind-badge'
 import { MarkLegend, ResponseItem } from '@/components/response-item'
 import { ShareOfVoice } from '@/components/share-of-voice'
 import { TrendChart } from '@/components/trend-chart'
@@ -50,6 +51,7 @@ export default async function PromptPage({
         </Link>
         <div>
           <p className="text-sm text-ink-soft">
+            <PromptKindBadge kind={found.kind} className="mr-2" />
             質問{found.archivedAt && '（アーカイブ済み。今は計測していません）'}
           </p>
           <h2 className="text-xl font-bold">「{found.text}」</h2>

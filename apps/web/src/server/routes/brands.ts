@@ -77,19 +77,20 @@ export const brandRoutes = new Hono<OrgEnv>()
     return c.json({ brand: await findBrandInOrg(c.var.organizationId, brandId) })
   })
 
-  // ダッシュボードの数字（言及率の推移・シェア・引用ドメイン・質問ごと）。期間・AI・質問で絞り込める
+  // ダッシュボードの数字（言及率の推移・シェア・引用ドメイン・質問ごと）。期間・AI・種類・質問で絞り込める
   .get(
     '/:brandId/metrics',
     validate('param', brandParams),
     validate('query', metricsQuery),
     async (c) => {
       const { brandId } = c.req.valid('param')
-      const { days, ai, q } = c.req.valid('query')
+      const { days, ai, kind, q } = c.req.valid('query')
       await findBrandInOrg(c.var.organizationId, brandId)
       return c.json({
         metrics: await getBrandMetrics(c.var.organizationId, brandId, c.var.llmMode, {
           days,
           provider: ai,
+          kind,
           promptId: q,
         }),
       })

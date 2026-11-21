@@ -1,6 +1,9 @@
 export const PROVIDER_LABEL = { openai: 'ChatGPT', gemini: 'Gemini' } as const
 export type ProviderKey = keyof typeof PROVIDER_LABEL
 
+/** 質問の種類（聞き方） */
+export const PROMPT_KIND_LABEL = { question: '質問文', keyword: 'キーワード' } as const
+
 export const RUN_STATUS_LABEL = {
   queued: '待機中',
   running: '計測中',

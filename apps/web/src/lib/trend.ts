@@ -14,3 +14,12 @@ export function toTrendRows(metrics: Pick<BrandMetrics, 'trend'>): TrendRow[] {
     n: point.n,
   }))
 }
+
+/**
+ * 値のある日が 1 日しかなければ、その行と位置を返す（線にならず点が 1 つだけになる）。
+ * 2 日以上あれば null
+ */
+export function findLonePoint(rows: TrendRow[]): { index: number; row: TrendRow } | null {
+  const withValue = rows.flatMap((row, index) => (row.all === null ? [] : [{ index, row }]))
+  return withValue.length === 1 ? (withValue[0] ?? null) : null
+}
