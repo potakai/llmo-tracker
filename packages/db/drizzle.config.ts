@@ -1,5 +1,6 @@
 import { config } from 'dotenv'
 import { defineConfig } from 'drizzle-kit'
+import { normalizeDatabaseUrl } from './src/url'
 
 config({ path: '../../.env' })
 
@@ -11,6 +12,6 @@ export default defineConfig({
   schema: './src/schema/index.ts',
   out: './drizzle',
   casing: 'snake_case',
-  dbCredentials: { url },
+  dbCredentials: { url: normalizeDatabaseUrl(url) },
   strict: true,
 })

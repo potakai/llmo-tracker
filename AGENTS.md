@@ -36,7 +36,7 @@ pnpm inngest:dev    # Inngest の開発サーバー（RUN_DISPATCH=inngest と I
 - **本物の AI API は叩かない**。開発・テストは `LLM_MODE=fake`。`LLM_MODE=live` や `pnpm ask` は費用がかかるので、人に頼まれたときだけ
 - AI のプロバイダーや抽出器を新しく使う場所では、`createProvidersFromEnv` を直接呼ばず `createLlmPolicy(env).llmFor(organizationId)` を通す（本物の AI は `LIVE_ORGANIZATION_IDS` の組織だけ）
 - 質問（prompt）の文面は書き換えない設計。変えたいときはアーカイブして新しく追加する
-- 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` と CI にも足す。Inngest の関数は Vercel 上で動くので、Vercel の環境変数に入っていればよい
+- 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` に足す。CI（`.github/workflows/ci.yml`）には、**CI の中で実際に使うものだけ**足す（CI は `LLM_MODE=fake` で、run を同じプロセスで実行するので、本物の AI のキーや Inngest のキーは要らない）。本番で使うものは Vercel の環境変数に入れる
 - Web から run をジョブに渡すときは `run/requested` イベントを送り、ID は `createRunRequestedEvent`（`run-<runId>`）で作る。ID を変えると同じ run が二重に動く
 - エラーは `src/server/errors.ts` の `errors` から投げ、フロントは `code` で分岐する
 - バグを直すときは、先に落ちるテストを書く
