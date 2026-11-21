@@ -18,15 +18,15 @@ export default async function BrandDashboard({
   params: Promise<{ brandId: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const { brand, isDemo, llmMode } = await loadBrandForPage((await params).brandId)
+  const { organizationId, brand, isDemo, llmMode } = await loadBrandForPage((await params).brandId)
   const filter = parseFilter(await searchParams)
   const [metrics, runs] = await Promise.all([
-    getBrandMetrics(brand.id, llmMode, {
+    getBrandMetrics(organizationId, brand.id, llmMode, {
       days: filter.days,
       provider: filter.ai,
       promptId: filter.q,
     }),
-    listRuns(brand.id, 10),
+    listRuns(organizationId, brand.id, 10),
   ])
 
   const path = `/app/brands/${brand.id}`

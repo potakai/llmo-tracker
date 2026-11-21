@@ -21,20 +21,20 @@ export default async function PromptPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const raw = await params
-  const { brand, llmMode } = await loadBrandForPage(raw.brandId)
+  const { organizationId, brand, llmMode } = await loadBrandForPage(raw.brandId)
   const parsed = promptParams.safeParse(raw)
   if (!parsed.success) notFound()
-  const found = await findPromptInBrand(brand.id, parsed.data.promptId)
+  const found = await findPromptInBrand(organizationId, brand.id, parsed.data.promptId)
   if (!found) notFound()
 
   const filter = { ...parseFilter(await searchParams), q: undefined }
   const [metrics, responses] = await Promise.all([
-    getBrandMetrics(brand.id, llmMode, {
+    getBrandMetrics(organizationId, brand.id, llmMode, {
       days: filter.days,
       provider: filter.ai,
       promptId: found.id,
     }),
-    listPromptResponses(found.id, llmMode, { provider: filter.ai, limit: 30 }),
+    listPromptResponses(organizationId, found.id, llmMode, { provider: filter.ai, limit: 30 }),
   ])
   const latest = metrics.latest
   const path = `/app/brands/${brand.id}/prompts/${found.id}`

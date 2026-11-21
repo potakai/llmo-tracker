@@ -4,6 +4,7 @@ import { and, asc, desc, eq, gte, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { addDays, todayInTokyo, wilsonInterval } from '@/lib/stats'
 import { countedResponses } from './sample-responses'
+import { inOrganization } from './tenant'
 
 /** run が「いつの計測か」：自動実行は対象日、手動実行は作成日（日本時間） */
 const runDate = sql<string>`coalesce(${run.scheduledFor}, (${run.createdAt} at time zone 'Asia/Tokyo')::date)::text`
@@ -40,9 +41,11 @@ export type MetricsFilter = {
  * - topDomains: 直近 window 日に引用されたドメインの上位
  * - byPrompt: 直近 window 日の、質問ごとの言及率
  *
+ * どの数字も、ブランドが organizationId の組織のものでなければ空になる。
  * llmMode が live なら、サンプルの AI（fake）の回答はどの数字にも入れない。
  */
 export async function getBrandMetrics(
+  organizationId: string,
   brandId: string,
   llmMode: LlmMode,
   filter: MetricsFilter = {},
@@ -62,6 +65,7 @@ export async function getBrandMetrics(
   const scope = (since: string) =>
     and(
       eq(run.brandId, brandId),
+      inOrganization(run.brandId, organizationId),
       eq(response.status, 'succeeded'),
       gte(runDate, since),
       ...narrowing,

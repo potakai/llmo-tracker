@@ -8,6 +8,7 @@ import {
 import { executeRun } from '@llmo/runner'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
+import { sampleRunNotice } from '@/lib/sample-run'
 import { createApp } from '@/server/app'
 import { listPromptResponses } from '@/server/queries/prompts'
 import { TestClient } from './helpers'
@@ -32,21 +33,28 @@ function createRealLookingProvider(id: ProviderId): AnswerProvider {
   }
 }
 
+type RunKind = 'fake' | 'real' | 'mixed'
+
+/** 計測に使う AI。mixed は ChatGPT だけ本物（途中で live に切り替わった計測の代わり） */
+function providersFor(kind: RunKind) {
+  return {
+    openai: kind === 'fake' ? createFakeProvider('openai') : createRealLookingProvider('openai'),
+    gemini: kind === 'real' ? createRealLookingProvider('gemini') : createFakeProvider('gemini'),
+  }
+}
+
 /**
  * fake の計測を 1 回、本物の計測を 1 回した組織を作る（live にする前にサンプルで計測した状態）。
- * 2 質問 × 2 AI × 1 回 = 4 件ずつ
+ * 2 質問 × 2 AI × 1 回 = 4 件ずつ。runOnce で、あとから計測を足せる
  */
 async function setupMixedBrand(mode: LlmMode) {
-  let useReal = false
+  let next: RunKind = 'fake'
   const app = createApp({
     dispatchRun: async (runId) => {
-      const providers = useReal
-        ? {
-            openai: createRealLookingProvider('openai'),
-            gemini: createRealLookingProvider('gemini'),
-          }
-        : { openai: createFakeProvider('openai'), gemini: createFakeProvider('gemini') }
-      await executeRun({ db, providers, extractor: createRuleBasedExtractor() }, runId)
+      await executeRun(
+        { db, providers: providersFor(next), extractor: createRuleBasedExtractor() },
+        runId,
+      )
     },
     llmModeFor: () => mode,
   })
@@ -60,18 +68,17 @@ async function setupMixedBrand(mode: LlmMode) {
     samplesPerPrompt: 1,
   })
   const brandId = json.brand.id as string
+  const organizationId = json.brand.organizationId as string
   const promptId = json.brand.prompts[0].id as string
 
-  const fakeRun = await client.post(`/api/brands/${brandId}/runs`, {})
-  useReal = true
-  const realRun = await client.post(`/api/brands/${brandId}/runs`, {})
-  return {
-    client,
-    brandId,
-    promptId,
-    fakeRunId: fakeRun.json.run.id as string,
-    realRunId: realRun.json.run.id as string,
+  const runOnce = async (kind: RunKind) => {
+    next = kind
+    const started = await client.post(`/api/brands/${brandId}/runs`, {})
+    return started.json.run.id as string
   }
+  const fakeRunId = await runOnce('fake')
+  const realRunId = await runOnce('real')
+  return { client, brandId, organizationId, promptId, fakeRunId, realRunId, runOnce }
 }
 
 describe('live の組織', () => {
@@ -88,9 +95,9 @@ describe('live の組織', () => {
   })
 
   it('質問の回答の一覧には、本物の回答だけが出る', async () => {
-    const { promptId } = await setupMixedBrand('live')
+    const { organizationId, promptId } = await setupMixedBrand('live')
 
-    const responses = await listPromptResponses(promptId, 'live')
+    const responses = await listPromptResponses(organizationId, promptId, 'live')
     expect(responses).toHaveLength(2)
     expect(responses.every((r) => !r.model.startsWith('fake-'))).toBe(true)
   })
@@ -112,13 +119,46 @@ describe('live の組織', () => {
 
 describe('fake の組織', () => {
   it('fake の回答も今までどおり集計される', async () => {
-    const { client, brandId, promptId } = await setupMixedBrand('fake')
+    const { client, brandId, organizationId, promptId } = await setupMixedBrand('fake')
 
     const { metrics } = (await client.get(`/api/brands/${brandId}/metrics?days=7`)).json
     expect(metrics.latest.n).toBe(8)
     expect(metrics.topDomains.map((d: { domain: string }) => d.domain)).toContain('example.com')
 
-    const responses = await listPromptResponses(promptId, 'fake')
+    const responses = await listPromptResponses(organizationId, promptId, 'fake')
     expect(responses).toHaveLength(4)
+  })
+})
+
+describe('計測の詳細の注記', () => {
+  it('全部がサンプルの計測には、サンプルの計測だという注記が出る', async () => {
+    const { client, brandId, fakeRunId } = await setupMixedBrand('live')
+
+    const { run } = (await client.get(`/api/brands/${brandId}/runs/${fakeRunId}`)).json
+    const models = run.responses.map((r: { model: string }) => r.model)
+    expect(sampleRunNotice(models, 'live')).toEqual({ kind: 'all' })
+    // fake の組織（デモ以外）でも、サンプルの計測だということは伝える
+    expect(sampleRunNotice(models, 'fake')).toEqual({ kind: 'all' })
+  })
+
+  it('サンプルと本物が混ざった計測では、live の組織ならサンプルの件数が出る', async () => {
+    const { client, brandId, runOnce } = await setupMixedBrand('live')
+    const mixedRunId = await runOnce('mixed')
+
+    const { run } = (await client.get(`/api/brands/${brandId}/runs/${mixedRunId}`)).json
+    const models = run.responses.map((r: { model: string }) => r.model)
+    // 2 質問 × Gemini（フェイク）× 1 回 = 2 件
+    expect(sampleRunNotice(models, 'live')).toEqual({ kind: 'mixed', sampleCount: 2 })
+
+    // 混ざった計測の本物の分は集計に入り、サンプルの分は入らない（4 + 2 件）
+    const { metrics } = (await client.get(`/api/brands/${brandId}/metrics?days=7`)).json
+    expect(metrics.latest.n).toBe(6)
+  })
+
+  it('本物だけの計測と、fake の組織の混ざった計測には、注記が出ない', async () => {
+    expect(sampleRunNotice(['real-openai-model', 'real-gemini-model'], 'live')).toBeNull()
+    // fake の組織では何も集計から外していないので「外しています」とは言わない
+    expect(sampleRunNotice(['real-openai-model', 'fake-gemini'], 'fake')).toBeNull()
+    expect(sampleRunNotice([], 'live')).toBeNull()
   })
 })
