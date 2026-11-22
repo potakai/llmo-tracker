@@ -54,7 +54,16 @@ const OWN_CITE_BASE = 0.04
 const OWN_CITE_GROWTH = 0.08
 /** 「AI が書いている気になる点」用：自社が出た回答のうち、気になる書き方をする割合 */
 const NEGATIVE_RATE = 0.25
-const NEGATIVE_REMARK = 'サポートの返信が遅いという声もあります'
+/**
+ * 自社についての気になる書き方。2 つ目は否定的な言い回しの手がかり（hint-quotes.ts）を含まないので、
+ * 画面では箇所を特定できず「回答全体を確かめてください」と案内される
+ */
+const NEGATIVE_REMARKS = [
+  'サポートの返信が遅いという声もあります',
+  '人によって評価が分かれるようです',
+]
+/** 気になる書き方のうち、2 つ目（手がかりのない書き方）を使う割合 */
+const VAGUE_NEGATIVE_RATE = 0.3
 
 // --- 決まった乱数（同じ入力なら同じ結果） ---------------------------------
 function rng(seed: string) {
@@ -103,7 +112,7 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
       const isNegative = hasBrand && random() < NEGATIVE_RATE
       const remark = (name: string, i: number) =>
         name === BRAND && isNegative
-          ? NEGATIVE_REMARK
+          ? NEGATIVE_REMARKS[random() < VAGUE_NEGATIVE_RATE ? 1 : 0]!
           : `${['機能が充実', '価格が手ごろ', '画面がわかりやすい', 'サポートが丁寧'][i % 4]}と評判です`
 
       const text = [
@@ -134,7 +143,7 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
 
 /**
  * デモ用の抽出器。名前はルールベースで探し、言い回し（感情）は、
- * 自社について気になる書き方（NEGATIVE_REMARK）をしていれば否定的、そうでなければ好意的とする
+ * 自社について気になる書き方（NEGATIVE_REMARKS）をしていれば否定的、そうでなければ好意的とする
  * （ルールベースの抽出器は言い回しを判定しないため）
  */
 function demoExtractor(): Extractor {
@@ -143,7 +152,9 @@ function demoExtractor(): Extractor {
     async extract(input) {
       const result = await rules.extract(input)
       if (!result.brandMentioned) return result
-      const isNegative = input.answerText.includes(`${BRAND}：${NEGATIVE_REMARK}`)
+      const isNegative = NEGATIVE_REMARKS.some((remark) =>
+        input.answerText.includes(`${BRAND}：${remark}`),
+      )
       return { ...result, sentiment: isNegative ? 'negative' : 'positive' }
     },
   }

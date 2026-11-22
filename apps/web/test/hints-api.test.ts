@@ -1,4 +1,4 @@
-import { analysis, prompt, response, run } from '@llmo/db'
+import { analysis, brand as brandTable, prompt, response, run } from '@llmo/db'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
@@ -44,19 +44,41 @@ describe('改善のヒントの API', () => {
     expect(evidenceIds.sort()).toEqual([...new Set(ids)].sort())
   })
 
-  it('回答が少ないうちは施策を出さず、毎日の計測であと何日かかるかを返す', async () => {
-    // 1 つの質問 × 2 AI × 1 回 = 1 日 2 件
-    const { client, brand } = await setup('few', { samplesPerPrompt: 1, prompts: ['質問'] })
+  it('回答が少ないうちは施策を出さず、今の設定から、あと何日かかるかを返す', async () => {
+    // 2 つの質問 × 2 AI × 1 回 = 1 日 4 件（14 日で 56 件なので届く）
+    const { client, brand } = await setup('few', {
+      samplesPerPrompt: 1,
+      prompts: ['質問1', '質問2'],
+    })
 
     const res = await client.get(hintsPath(brand.id))
     expect(res.status).toBe(200)
     expect(res.json.hints).toEqual({
       status: 'waiting',
-      responses: 2,
+      responses: 4,
       needed: MIN_RESPONSES,
-      daysLeft: Math.ceil((MIN_RESPONSES - 2) / 2),
+      estimate: { kind: 'days', daysLeft: Math.ceil((MIN_RESPONSES - 4) / 4) },
     })
     expect(res.json.evidence).toEqual([])
+  })
+
+  it(`今の設定では ${HINT_WINDOW_DAYS} 日で ${MIN_RESPONSES} 件に届かないなら、1 日の件数とともにそう返す`, async () => {
+    // 1 つの質問 × 2 AI × 1 回 = 1 日 2 件（14 日で 28 件）
+    const { client, brand } = await setup('tiny', { samplesPerPrompt: 1, prompts: ['質問'] })
+
+    const res = await client.get(hintsPath(brand.id))
+    expect(res.json.hints.estimate).toEqual({ kind: 'unreachable', responsesPerDay: 2 })
+  })
+
+  it('自動計測がオフのときと、有効な質問がないときを分けて返す', async () => {
+    const { client, brand } = await setup('off', { samplesPerPrompt: 1, prompts: ['質問'] })
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+    const off = await client.get(hintsPath(brand.id))
+    expect(off.json.hints.estimate).toEqual({ kind: 'scheduleOff' })
+
+    await db.update(prompt).set({ archivedAt: new Date() }).where(eq(prompt.brandId, brand.id))
+    const noPrompts = await client.get(hintsPath(brand.id))
+    expect(noPrompts.json.hints.estimate).toEqual({ kind: 'noActivePrompts' })
   })
 
   it('他の組織のブランドは 404', async () => {
@@ -70,7 +92,7 @@ describe('改善のヒントの API', () => {
     expect(res.json.error.code).toBe('NOT_FOUND')
   })
 
-  it('否定的な回答があれば、AI が自社について書いた文をそのまま返す', async () => {
+  it('否定的な回答があれば、否定的な箇所を前後の文つきで返し、特定できない回答は数を返す', async () => {
     const { client, brand } = await setup()
     const negatives = await db
       .select({ id: response.id })
@@ -86,11 +108,29 @@ describe('改善のヒントの API', () => {
       .set({ sentiment: 'negative' })
       .where(inArray(analysis.responseId, ids))
 
+    // 1 件目だけ、否定的な言い回しの入った回答にする（2 件目はフェイクの AI の回答のまま）
+    await db
+      .update(response)
+      .set({
+        answerText:
+          'おすすめは次のとおりです。\n1. ◯◯会計：サポートの返信が遅いという声もあります。',
+      })
+      .where(eq(response.id, ids[0] ?? ''))
+
     const res = await client.get(hintsPath(brand.id))
     const hint = res.json.hints.hints.find((h: { kind: string }) => h.kind === 'negative')
-    expect(hint).toMatchObject({ kind: 'negative', negativeResponses: 2 })
-    expect(hint.quotes.length).toBeGreaterThan(0)
-    for (const quote of hint.quotes) expect(quote).toContain('◯◯会計')
+    expect(hint).toMatchObject({
+      kind: 'negative',
+      negativeResponses: 2,
+      passages: [
+        {
+          before: 'おすすめは次のとおりです。',
+          focus: '◯◯会計：サポートの返信が遅いという声もあります。',
+          after: null,
+        },
+      ],
+      unlocatedResponses: 1,
+    })
     expect([...hint.evidenceResponseIds].sort()).toEqual([...ids].sort())
   })
 })

@@ -2,13 +2,13 @@
  * 改善のヒント：直近の回答から、クライアントが次にやることを機械的に見つける。
  * DB には触らない（集めた回答を渡すと、施策の一覧を返す）。しきい値と優先度の計算はここに集める。
  */
-import { normalize } from '@llmo/llm'
+import { findNegativePassage, type NegativePassage } from './hint-quotes'
 
 /** 何日分の回答から見つけるか */
 export const HINT_WINDOW_DAYS = 14
 /** これより回答が少ないときは、施策を出さない（少ないデータで断定しない） */
 export const MIN_RESPONSES = 50
-/** 割合を比べる母数（質問への回答・引用のある回答など）の最小 */
+/** 割合を比べる母数（質問への回答・引用のある回答・自社の名前が出た回答など）の最小 */
 export const MIN_GROUP_RESPONSES = 10
 /** 載るべきサイト：競合が出た回答で、少なくともこの件数は引用されていること */
 export const MIN_SITE_CITATIONS = 5
@@ -24,9 +24,8 @@ export const MAX_HINTS = 5
 export const MAX_HINTS_PER_KIND = 2
 /** 根拠として見せる回答の数 */
 export const EVIDENCE_LIMIT = 10
-/** 抜き出した文の最大の長さ */
-const MAX_QUOTE_LENGTH = 120
-const MAX_QUOTES = 3
+/** 気になる点として見せる箇所の数 */
+const MAX_PASSAGES = 3
 const MAX_COMPETITOR_NAMES = 2
 /** 割合の引き算で出る誤差（0.3 − 0.1 = 0.19999…）を、境界の判定で吸収する */
 const EPSILON = 1e-9
@@ -54,9 +53,25 @@ export type HintInput = {
   brand: { name: string; aliases: string[]; domain: string | null }
   competitors: { id: string; name: string; domain: string | null }[]
   responses: HintResponse[]
-  /** 毎日の計測で 1 日に集まる回答の数（自動計測が止まっていれば 0） */
+  collection: CollectionSettings
+}
+
+/** 今の計測の設定（あと何日でデータが集まるかの見積もりに使う） */
+export type CollectionSettings = {
+  scheduleEnabled: boolean
+  /** 今も計測している質問の数 */
+  activePrompts: number
+  /** 毎日の自動計測で 1 日に集まる回答の数（質問の数 × AI の数 × 回数） */
   responsesPerDay: number
 }
+
+/** データが集まるまでの見積もり */
+export type WaitEstimate =
+  | { kind: 'days'; daysLeft: number }
+  /** 今の設定では、直近 HINT_WINDOW_DAYS 日の範囲に MIN_RESPONSES 件が届かない */
+  | { kind: 'unreachable'; responsesPerDay: number }
+  | { kind: 'noActivePrompts' }
+  | { kind: 'scheduleOff' }
 
 type HintBase = {
   priority: number
@@ -71,8 +86,13 @@ export type SiteHint = HintBase & {
   competitorNames: string[]
   /** 競合が出た回答のうち、そのサイトを引用した割合 */
   competitorRate: number
-  /** 自社が出た回答のうち、そのサイトを引用した割合 */
-  brandRate: number
+  /**
+   * 自社が出た回答のうち、そのサイトを引用した割合。
+   * 自社が出た回答が MIN_GROUP_RESPONSES 件に届かないときは比べられないので null
+   */
+  brandRate: number | null
+  /** 自社の名前が出た回答の数 */
+  brandResponses: number
   evidenceResponseIds: string[]
 }
 
@@ -90,8 +110,10 @@ export type PromptHint = HintBase & {
 export type NegativeHint = HintBase & {
   kind: 'negative'
   negativeResponses: number
-  /** AI が自社について書いた文（そのまま） */
-  quotes: string[]
+  /** 自社について否定的に書いている箇所（前後の文つき） */
+  passages: NegativePassage[]
+  /** 否定的な箇所を言い回しから特定できなかった回答の数（回答全体を見てもらう） */
+  unlocatedResponses: number
   evidenceResponseIds: string[]
 }
 
@@ -99,15 +121,22 @@ export type DomainCount = { domain: string; responses: number; isOwn: boolean }
 
 export type OwnSiteHint = HintBase & {
   kind: 'ownSite'
-  /** 未設定なら null（設定を促す） */
-  domain: string | null
-  ownRate: number | null
+  domain: string
+  /** 参考元が表示された回答（母数 = responses）のうち、自社サイトが入っていた割合 */
+  ownRate: number
+  /** 自社サイト以外でいちばん多く参考元になったサイト */
   topDomain: string
   topRate: number
   evidenceDomains: DomainCount[]
 }
 
-export type Hint = SiteHint | PromptHint | NegativeHint | OwnSiteHint
+/** 自社サイトが未登録：引用の件数に関係なく、登録を案内する（いつも先頭に出す） */
+export type OwnSiteSetupHint = HintBase & {
+  kind: 'ownSiteSetup'
+  evidenceDomains: DomainCount[]
+}
+
+export type Hint = SiteHint | PromptHint | NegativeHint | OwnSiteHint | OwnSiteSetupHint
 export type HintKind = Hint['kind']
 
 /** 施策を見分けるキー（同じ種類の施策は、サイトや質問ごとに 1 つ） */
@@ -119,12 +148,13 @@ export function hintKey(hint: Hint): string {
       return `prompt:${hint.promptId}`
     case 'negative':
     case 'ownSite':
+    case 'ownSiteSetup':
       return hint.kind
   }
 }
 
 export type HintsResult =
-  | { status: 'waiting'; responses: number; needed: number; daysLeft: number | null }
+  | { status: 'waiting'; responses: number; needed: number; estimate: WaitEstimate }
   | { status: 'ready'; responses: number; hints: Hint[] }
 
 /**
@@ -180,6 +210,8 @@ function findSiteHints(input: HintInput): SiteHint[] {
   const withCompetitor = input.responses.filter((r) => r.competitorIds.length > 0)
   const withBrand = input.responses.filter((r) => r.brandMentioned)
   if (withCompetitor.length < MIN_GROUP_RESPONSES) return []
+  // 自社が出た回答が少なければ比べない（競合側で参考元になっている割合だけで判断する）
+  const isComparable = withBrand.length >= MIN_GROUP_RESPONSES
   const excluded = [input.brand.domain, ...input.competitors.map((c) => c.domain)]
 
   return countDomains(withCompetitor).flatMap(({ domain, responses: count }) => {
@@ -187,11 +219,10 @@ function findSiteHints(input: HintInput): SiteHint[] {
     if (excluded.some((site) => isSameSite(domain, site))) return []
     const citing = withCompetitor.filter((r) => r.citedDomains.includes(domain))
     const competitorRate = rate(count, withCompetitor.length)
-    const brandRate = rate(
-      withBrand.filter((r) => r.citedDomains.includes(domain)).length,
-      withBrand.length,
-    )
-    const gap = competitorRate - brandRate
+    const brandRate = isComparable
+      ? rate(withBrand.filter((r) => r.citedDomains.includes(domain)).length, withBrand.length)
+      : null
+    const gap = competitorRate - (brandRate ?? 0)
     if (!meetsGap(gap)) return []
     return [
       {
@@ -200,6 +231,7 @@ function findSiteHints(input: HintInput): SiteHint[] {
         competitorNames: topCompetitorNames(input, citing),
         competitorRate,
         brandRate,
+        brandResponses: withBrand.length,
         responses: withCompetitor.length,
         priority: hintPriority({ responses: withCompetitor.length, gap }),
         evidenceResponseIds: evidenceIds(citing),
@@ -248,41 +280,69 @@ function findNegativeHints(input: HintInput): NegativeHint[] {
   const withBrand = input.responses.filter((r) => r.brandMentioned)
   const negatives = withBrand.filter((r) => r.sentiment === 'negative')
   if (negatives.length < MIN_NEGATIVE_RESPONSES) return []
-  const names = [input.brand.name, ...input.brand.aliases]
-  const quotes = [
-    ...new Set(negatives.flatMap((r) => sentencesMentioning(r.answerText ?? '', names))),
-  ].slice(0, MAX_QUOTES)
+  const brandNames = [input.brand.name, ...input.brand.aliases]
+  const otherNames = input.competitors.map((c) => c.name)
+  const found = negatives.map((r) =>
+    findNegativePassage(r.answerText ?? '', brandNames, otherNames),
+  )
+  const located = found.filter((p) => p !== null)
+  // 箇所を特定できなかった回答は、回答全体を見てもらうので、根拠の先頭に並べる
+  const unlocatedFirst = [
+    ...negatives.filter((_, i) => found[i] === null),
+    ...negatives.filter((_, i) => found[i] !== null),
+  ]
+  const passages = [...new Map(located.map((p) => [p.focus, p])).values()].slice(0, MAX_PASSAGES)
   return [
     {
       kind: 'negative',
       negativeResponses: negatives.length,
-      quotes,
+      passages,
+      unlocatedResponses: found.length - located.length,
       responses: withBrand.length,
       priority: hintPriority({
         responses: withBrand.length,
         gap: rate(negatives.length, withBrand.length),
       }),
-      evidenceResponseIds: evidenceIds(negatives),
+      evidenceResponseIds: evidenceIds(unlocatedFirst),
     },
   ]
 }
 
+function domainCounts(cited: HintResponse[], own: string | null): DomainCount[] {
+  return countDomains(cited).map((d) => ({ ...d, isOwn: isSameSite(d.domain, own) }))
+}
+
+/** 自社サイトが未登録なら、引用の件数に関係なく登録を案内する */
+function findOwnSiteSetupHint(input: HintInput): OwnSiteSetupHint | null {
+  if (input.brand.domain !== null) return null
+  const cited = input.responses.filter((r) => r.citedDomains.length > 0)
+  const domains = domainCounts(cited, null)
+  return {
+    kind: 'ownSiteSetup',
+    responses: cited.length,
+    // 先頭に固定して出すので並べ替えには使わないが、ほかの施策と同じ式で参考の値を入れておく
+    priority: hintPriority({
+      responses: cited.length,
+      gap: rate(domains[0]?.responses ?? 0, cited.length),
+    }),
+    evidenceDomains: domains.slice(0, EVIDENCE_LIMIT),
+  }
+}
+
 function findOwnSiteHints(input: HintInput): OwnSiteHint[] {
+  const own = input.brand.domain
+  if (own === null) return []
   const cited = input.responses.filter((r) => r.citedDomains.length > 0)
   if (cited.length < MIN_GROUP_RESPONSES) return []
-  const own = input.brand.domain
-  const domains = countDomains(cited).map((d) => ({ ...d, isOwn: isSameSite(d.domain, own) }))
+  const domains = domainCounts(cited, own)
   const top = domains.find((d) => !d.isOwn)
   if (!top) return []
   const topRate = rate(top.responses, cited.length)
-  const ownRate =
-    own === null
-      ? null
-      : rate(
-          cited.filter((r) => r.citedDomains.some((d) => isSameSite(d, own))).length,
-          cited.length,
-        )
-  if (ownRate !== null && ownRate >= OWN_SITE_RARE_RATE - EPSILON) return []
+  const ownRate = rate(
+    cited.filter((r) => r.citedDomains.some((d) => isSameSite(d, own))).length,
+    cited.length,
+  )
+  if (ownRate >= OWN_SITE_RARE_RATE - EPSILON) return []
   return [
     {
       kind: 'ownSite',
@@ -291,25 +351,36 @@ function findOwnSiteHints(input: HintInput): OwnSiteHint[] {
       topDomain: top.domain,
       topRate,
       responses: cited.length,
-      priority: hintPriority({
-        responses: cited.length,
-        gap: Math.max(0, topRate - (ownRate ?? 0)),
-      }),
+      priority: hintPriority({ responses: cited.length, gap: Math.max(0, topRate - ownRate) }),
       evidenceDomains: domains.slice(0, EVIDENCE_LIMIT),
     },
   ]
 }
 
 /** 優先度の高い順に、1 種類 MAX_HINTS_PER_KIND 件まで・全部で MAX_HINTS 件まで */
-function pickTop(candidates: Hint[]): Hint[] {
+function pickTop(candidates: Hint[], limit: number): Hint[] {
   const sorted = [...candidates].sort((a, b) => b.priority - a.priority)
   const picked: Hint[] = []
   for (const hint of sorted) {
-    if (picked.length >= MAX_HINTS) break
+    if (picked.length >= limit) break
     if (picked.filter((h) => h.kind === hint.kind).length >= MAX_HINTS_PER_KIND) continue
     picked.push(hint)
   }
   return picked
+}
+
+/**
+ * 今の計測の設定で、直近 HINT_WINDOW_DAYS 日の範囲に MIN_RESPONSES 件が集まるまでの日数を見積もる。
+ * 古い回答は範囲から外れていくので、届くかどうかは「1 日の件数 × 日数」で決まる
+ */
+export function estimateWait(responses: number, collection: CollectionSettings): WaitEstimate {
+  if (collection.activePrompts === 0) return { kind: 'noActivePrompts' }
+  if (!collection.scheduleEnabled || collection.responsesPerDay <= 0) return { kind: 'scheduleOff' }
+  const perDay = collection.responsesPerDay
+  if (perDay * HINT_WINDOW_DAYS < MIN_RESPONSES) {
+    return { kind: 'unreachable', responsesPerDay: perDay }
+  }
+  return { kind: 'days', daysLeft: Math.ceil((MIN_RESPONSES - responses) / perDay) }
 }
 
 export function buildHints(input: HintInput): HintsResult {
@@ -319,42 +390,18 @@ export function buildHints(input: HintInput): HintsResult {
       status: 'waiting',
       responses: total,
       needed: MIN_RESPONSES,
-      daysLeft:
-        input.responsesPerDay > 0
-          ? Math.ceil((MIN_RESPONSES - total) / input.responsesPerDay)
-          : null,
+      estimate: estimateWait(total, input.collection),
     }
   }
+  const setup = findOwnSiteSetupHint(input)
   const candidates: Hint[] = [
     ...findSiteHints(input),
     ...findPromptHints(input),
     ...findNegativeHints(input),
     ...findOwnSiteHints(input),
   ]
-  return { status: 'ready', responses: total, hints: pickTop(candidates) }
-}
-
-/** 箇条書きの記号（「- 」「1. 」「・」など）を文頭から外す */
-const LIST_MARKER = /^(?:[-*・•]|\d+[.)．])\s*/
-
-/** 文の終わり（。！？!?）か改行で区切る */
-function splitSentences(text: string): string[] {
-  return text
-    .split(/\n|(?<=[。！？!?])/)
-    .map((s) => s.trim().replace(LIST_MARKER, '').replace(/\*\*/g, '').trim())
-    .filter((s) => s.length > 0)
-}
-
-function truncate(sentence: string): string {
-  return sentence.length > MAX_QUOTE_LENGTH ? `${sentence.slice(0, MAX_QUOTE_LENGTH)}…` : sentence
-}
-
-/** 名前（表記ゆれ・別名を含む）が出てくる文を、出てきた順に重複なく返す */
-export function sentencesMentioning(text: string, names: string[]): string[] {
-  const needles = names.map(normalize).filter((n) => n.length > 0)
-  const found = splitSentences(text).filter((s) => {
-    const haystack = normalize(s)
-    return needles.some((n) => haystack.includes(n))
-  })
-  return [...new Set(found)].map(truncate)
+  const hints = setup
+    ? [setup, ...pickTop(candidates, MAX_HINTS - 1)]
+    : pickTop(candidates, MAX_HINTS)
+  return { status: 'ready', responses: total, hints }
 }

@@ -70,6 +70,12 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(/直近7日、AI の回答 20 件のうち/)).toBeVisible()
 
+  // 改善のヒントは、回答が集まるまで待つ（1 日 20 件なので、あと 30 件は 2 日ほど）
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(page.getByText(/データが集まるまでお待ちください（あと 2 日ほど）/)).toBeVisible()
+  await expect(page.getByText(/いまは 20 件/)).toBeVisible()
+  await page.getByRole('link', { name: '計測結果' }).click()
+
   // キーワードの質問はまだないが、絞り込んでも種類ごとの比較は出る
   await page.getByRole('link', { name: 'キーワード', exact: true }).click()
   await expect(page).toHaveURL(/kind=keyword/)
@@ -102,34 +108,50 @@ test.describe('デモアカウントでログイン済み', () => {
       'aria-current',
       'page',
     )
-    await expect(page.getByText(/次にやるとよいことを、大事な順に並べました/)).toBeVisible()
+    await expect(page.getByText(/次に検討できることを、優先度の高い順に並べました/)).toBeVisible()
 
     const hints = page.getByRole('list', { name: '改善のヒント' }).getByRole('article')
     await expect(hints).toHaveCount(5)
     // デモデータでは 4 種類すべてが出る
-    await expect(page.getByRole('heading', { name: /御社の情報を載せましょう/ })).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: /御社がすすめられていません/ }).first(),
+      page.getByRole('heading', { name: /が、競合の名前が出た回答でよく参考元になっています/ }),
     ).toBeVisible()
-    await expect(page.getByRole('heading', { name: /気になる書き方をしています/ })).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: /AI にほとんど参考にされていません/ }),
+      page.getByRole('heading', { name: /への回答に、御社の名前が/ }).first(),
     ).toBeVisible()
-    // AI が自社について書いた文を、そのまま見せる
     await expect(
-      page.getByText('サンプル会計：サポートの返信が遅いという声もあります。', { exact: true }),
+      page.getByRole('heading', { name: /御社について、否定的に書いている回答があります/ }),
     ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /参考元として表示される回答が少なめです/ }),
+    ).toBeVisible()
+    // 「すすめられた」「すすめられていない」とは書かない（数えているのは名前が出たかどうか。
+    // 質問文そのものに「おすすめ」が入ることはあるので、言い回しで確かめる）
+    await expect(hints.getByText(/すすめられ/)).toHaveCount(0)
+    // 否定的な箇所を、前後の文とあわせて見せる
+    const negative = hints.filter({ hasText: '否定的に書いている回答があります' })
+    await expect(
+      negative.getByText('サンプル会計：サポートの返信が遅いという声もあります。', { exact: true }),
+    ).toBeVisible()
+    // 否定的な箇所を特定できなかった回答は、回答全体を見るように案内する
+    await expect(
+      negative.getByText(
+        /件は、どこが否定的かを自動では特定できませんでした。.*回答全体を確かめてください/,
+      ),
+    ).toBeVisible()
+    // 自社サイトの割合は、何のうちの割合かを書く
+    await expect(hints.getByText(/今回の計測で参考元が表示された回答 \d+ 件のうち/)).toBeVisible()
 
     // 根拠を開くと、実際の AI の回答が見られる
-    const site = hints.filter({ hasText: '御社の情報を載せましょう' })
-    await site.getByText(/を参考にした回答を見る/).click()
+    const site = hints.filter({ hasText: 'よく参考元になっています' })
+    await site.getByText(/が参考元になった回答を見る/).click()
     const firstAnswer = site.locator('details details').first()
     await firstAnswer.locator('summary').click()
     await expect(firstAnswer.getByText('会計ソフトランキング')).toBeVisible()
 
-    // 自社サイトの施策の根拠は、参考にされたサイトの一覧
-    const own = hints.filter({ hasText: 'AI にほとんど参考にされていません' })
-    await own.getByText('AI が参考にしたサイトを見る').click()
+    // 自社サイトの施策の根拠は、参考元として表示されたサイトの一覧
+    const own = hints.filter({ hasText: '参考元として表示される回答が少なめです' })
+    await own.getByText('参考元として表示されたサイトを見る').click()
     await expect(own.getByText('自社サイト')).toBeVisible()
   })
 
@@ -220,4 +242,27 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await expect(page.getByText('保存しました')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('1 回の計測で同じ質問を聞く回数')).toHaveValue('3')
+
+  // 改善のヒント：今の設定では 14 日で 50 件に届かないなら、そう伝える
+  // （質問 2 つ × ChatGPT だけ × 1 回 = 1 日 2 件）
+  await page.getByLabel('1 回の計測で同じ質問を聞く回数').selectOption('1')
+  await page.getByRole('checkbox', { name: 'Gemini' }).uncheck()
+  await page.getByRole('button', { name: '設定を保存' }).click()
+  await expect(page.getByText('保存しました')).toBeVisible()
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(
+    page.getByText(/今の設定では、14日で 50 件に届きません（1 日あたり 2 件）/),
+  ).toBeVisible()
+
+  // 自動計測をオフにすると、日数ではなく、オフになっていることを伝える
+  // （案内の文の中にも「設定」へのリンクがあるので、タブから開く）
+  await page
+    .getByRole('navigation', { name: 'ブランドの画面' })
+    .getByRole('link', { name: '設定' })
+    .click()
+  await page.getByRole('checkbox', { name: '毎日自動で計測する' }).uncheck()
+  await page.getByRole('button', { name: '設定を保存' }).click()
+  await expect(page.getByText('保存しました')).toBeVisible()
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(page.getByText(/毎日の自動計測がオフになっているため/)).toBeVisible()
 })

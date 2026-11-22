@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildHints,
+  HINT_WINDOW_DAYS,
   type HintInput,
   type HintResponse,
   hintPriority,
@@ -11,7 +12,6 @@ import {
   MIN_RESPONSES,
   MIN_SITE_CITATIONS,
   OWN_SITE_RARE_RATE,
-  sentencesMentioning,
 } from '@/lib/hints'
 
 const RIVAL_A = { id: 'c-a', name: 'ミライ会計', domain: 'mirai.example' }
@@ -44,7 +44,7 @@ function input(responses: HintResponse[], overrides: Partial<HintInput> = {}): H
     brand: { name: 'サンプル会計', aliases: [], domain: 'sample.example' },
     competitors: [RIVAL_A, RIVAL_B],
     responses,
-    responsesPerDay: 20,
+    collection: { scheduleEnabled: true, activePrompts: 2, responsesPerDay: 20 },
     ...overrides,
   }
 }
@@ -83,27 +83,50 @@ describe('優先度の計算式', () => {
 })
 
 describe('データが少ないとき', () => {
+  const collection = (responsesPerDay: number, overrides = {}) => ({
+    collection: { scheduleEnabled: true, activePrompts: 1, responsesPerDay, ...overrides },
+  })
+
   it(`回答が ${MIN_RESPONSES} 件未満なら、施策を出さずに待つ日数を返す`, () => {
     const result = buildHints(input(times(MIN_RESPONSES - 1, { competitorIds: [RIVAL_A.id] })))
     expect(result).toEqual({
       status: 'waiting',
       responses: MIN_RESPONSES - 1,
       needed: MIN_RESPONSES,
-      daysLeft: 1,
+      estimate: { kind: 'days', daysLeft: 1 },
     })
   })
 
-  it('待つ日数は、1 日に集まる回答数から切り上げで出す', () => {
-    const result = buildHints(input(times(5), { responsesPerDay: 10 }))
-    expect(result).toMatchObject({
-      status: 'waiting',
-      daysLeft: Math.ceil((MIN_RESPONSES - 5) / 10),
+  it('待つ日数は、足りない分を 1 日に集まる回答数で割って切り上げる', () => {
+    // 1 日 10 件、いま 45 件 → あと 5 件 → 1 日
+    const result = buildHints(input(times(45), collection(10)))
+    expect(result).toMatchObject({ estimate: { kind: 'days', daysLeft: 1 } })
+    // 1 日 4 件、いま 40 件 → あと 10 件 → 3 日
+    expect(buildHints(input(times(40), collection(4)))).toMatchObject({
+      estimate: { kind: 'days', daysLeft: 3 },
     })
   })
 
-  it('毎日の計測が止まっている（1 日に集まる数が 0）なら、日数は出さない', () => {
-    const result = buildHints(input([], { responsesPerDay: 0 }))
-    expect(result).toMatchObject({ status: 'waiting', responses: 0, daysLeft: null })
+  it(`1 日の件数 × ${HINT_WINDOW_DAYS} 日が ${MIN_RESPONSES} 件に届かない設定なら、日数ではなく届かないことを返す`, () => {
+    const reachable = Math.ceil(MIN_RESPONSES / HINT_WINDOW_DAYS)
+    expect(buildHints(input(times(10), collection(reachable)))).toMatchObject({
+      estimate: { kind: 'days' },
+    })
+    expect(buildHints(input(times(10), collection(reachable - 1)))).toMatchObject({
+      estimate: { kind: 'unreachable', responsesPerDay: reachable - 1 },
+    })
+  })
+
+  it('自動計測がオフなら、そのことを返す', () => {
+    const result = buildHints(input([], collection(20, { scheduleEnabled: false })))
+    expect(result).toMatchObject({ responses: 0, estimate: { kind: 'scheduleOff' } })
+  })
+
+  it('有効な質問が 0 件なら、自動計測がオフでも、質問がないことを先に返す', () => {
+    const result = buildHints(
+      input([], collection(0, { scheduleEnabled: false, activePrompts: 0 })),
+    )
+    expect(result).toMatchObject({ estimate: { kind: 'noActivePrompts' } })
   })
 
   it(`回答がちょうど ${MIN_RESPONSES} 件あれば、施策を出す`, () => {
@@ -111,7 +134,7 @@ describe('データが少ないとき', () => {
   })
 })
 
-describe('すすめられていない質問', () => {
+describe('名前が出にくい質問', () => {
   /** 質問 p2 に n 件。競合 A は competitorHits 件、自社は brandHits 件に出る */
   function promptAnswers(n: number, competitorHits: number, brandHits: number) {
     return Array.from({ length: n }, (_, i) =>
@@ -235,6 +258,40 @@ describe('載るべきサイト', () => {
     expect(belowMin.some((h) => h.kind === 'site' && h.domain === 'ranking.example')).toBe(false)
   })
 
+  it(`自社の名前が出た回答が ${MIN_GROUP_RESPONSES} 件未満なら比べず、競合側の割合だけで出す`, () => {
+    // 自社側 9 件はすべて ranking.example を引用している（比べれば差はない）
+    const brandSide = times(MIN_GROUP_RESPONSES - 1, {
+      brandMentioned: true,
+      citedDomains: ['ranking.example'],
+    })
+    const competitorSide = Array.from({ length: 42 }, (_, i) =>
+      answer({ competitorIds: [RIVAL_A.id], citedDomains: i < 21 ? ['ranking.example'] : [] }),
+    )
+    const hints = hintsOf(input([...brandSide, ...competitorSide]))
+    expect(hints.find((h) => h.kind === 'site')).toMatchObject({
+      domain: 'ranking.example',
+      competitorRate: 0.5,
+      brandRate: null,
+      brandResponses: MIN_GROUP_RESPONSES - 1,
+    })
+
+    // ちょうど 10 件なら比べる → 自社側も 100% 引用しているので出さない
+    const comparable = [
+      ...brandSide,
+      answer({ brandMentioned: true, citedDomains: ['ranking.example'] }),
+    ]
+    const compared = hintsOf(input([...comparable, ...competitorSide]))
+    expect(compared.some((h) => h.kind === 'site')).toBe(false)
+  })
+
+  it(`比べないときも、競合側の割合が ${MIN_GAP} 未満なら出さない`, () => {
+    const competitorSide = Array.from({ length: 50 }, (_, i) =>
+      answer({ competitorIds: [RIVAL_A.id], citedDomains: i < 9 ? ['ranking.example'] : [] }),
+    )
+    const hints = hintsOf(input(competitorSide))
+    expect(hints.some((h) => h.kind === 'site')).toBe(false)
+  })
+
   it('自社サイトと、登録した競合のサイト（サブドメインを含む）は出さない', () => {
     const responses = [
       ...neutralFiller(),
@@ -252,7 +309,7 @@ describe('AI が書いている気になる点', () => {
   const NEGATIVE_TEXT =
     '1. ミライ会計：機能が充実しています。\n2. サンプル会計：サポートの返信が遅いという声もあります。\nほかにも候補があります。'
 
-  it(`否定的な回答が ${MIN_NEGATIVE_RESPONSES} 件以上なら、自社について書いた文をそのまま出す`, () => {
+  it(`否定的な回答が ${MIN_NEGATIVE_RESPONSES} 件以上なら、否定的な箇所を前後の文つきで出す（同じ箇所は 1 つにまとめる）`, () => {
     const negatives = times(MIN_NEGATIVE_RESPONSES, {
       brandMentioned: true,
       sentiment: 'negative',
@@ -263,12 +320,40 @@ describe('AI が書いている気になる点', () => {
     expect(hint).toMatchObject({
       kind: 'negative',
       negativeResponses: MIN_NEGATIVE_RESPONSES,
-      quotes: ['サンプル会計：サポートの返信が遅いという声もあります。'],
+      passages: [
+        {
+          before: 'ミライ会計：機能が充実しています。',
+          focus: 'サンプル会計：サポートの返信が遅いという声もあります。',
+          after: 'ほかにも候補があります。',
+        },
+      ],
+      unlocatedResponses: 0,
       responses: MIN_RESPONSES + MIN_NEGATIVE_RESPONSES,
     })
     expect(hint?.kind === 'negative' && hint.evidenceResponseIds).toEqual(
       negatives.map((r) => r.id),
     )
+  })
+
+  it('否定的な箇所を言い回しから特定できない回答は、数だけ返す（回答全体を見てもらう）', () => {
+    const negatives = [
+      answer({ brandMentioned: true, sentiment: 'negative', answerText: NEGATIVE_TEXT }),
+      answer({
+        brandMentioned: true,
+        sentiment: 'negative',
+        answerText: 'サンプル会計はクラウド型の会計ソフトです。',
+      }),
+    ]
+    const hint = hintsOf(input([...neutralFiller(), ...negatives])).find(
+      (h) => h.kind === 'negative',
+    )
+    expect(hint).toMatchObject({ unlocatedResponses: 1 })
+    expect(hint?.kind === 'negative' && hint.passages).toHaveLength(1)
+    // 回答全体を見てもらうので、特定できなかった回答を根拠の先頭に並べる
+    expect(hint?.kind === 'negative' && hint.evidenceResponseIds).toEqual([
+      negatives[1]?.id,
+      negatives[0]?.id,
+    ])
   })
 
   it(`否定的な回答が ${MIN_NEGATIVE_RESPONSES - 1} 件だけなら出さない`, () => {
@@ -318,18 +403,56 @@ describe('自社サイトが参考にされていない', () => {
     expect(hints.some((h) => h.kind === 'ownSite')).toBe(false)
   })
 
-  it('自社サイトのドメインが未設定なら、設定を促す施策を出す', () => {
-    const hints = hintsOf(
-      input(citedAnswers(MIN_RESPONSES, 0), {
-        brand: { name: 'サンプル会計', aliases: [], domain: null },
+  const noDomain = { brand: { name: 'サンプル会計', aliases: [], domain: null } }
+
+  it('自社サイトのドメインが未設定なら、登録を案内する施策を先頭に出す', () => {
+    const hints = hintsOf(input(citedAnswers(MIN_RESPONSES, 0), noDomain))
+    expect(hints[0]).toMatchObject({
+      kind: 'ownSiteSetup',
+      responses: MIN_RESPONSES,
+      evidenceDomains: [{ domain: 'hikaku.example', responses: MIN_RESPONSES, isOwn: false }],
+    })
+    expect(hints.some((h) => h.kind === 'ownSite')).toBe(false)
+  })
+
+  it('未設定なら、引用がまったくなくても登録を案内する', () => {
+    const hints = hintsOf(input(times(MIN_RESPONSES), noDomain))
+    expect(hints).toEqual([
+      expect.objectContaining({ kind: 'ownSiteSetup', responses: 0, evidenceDomains: [] }),
+    ])
+  })
+
+  it('未設定の案内は、案内自体の優先度が低くても（引用 0 件）、ほかの施策より先に出す', () => {
+    const prompts = [0, 1, 2].flatMap((p) =>
+      times(20, { promptId: `q${p}`, competitorIds: [RIVAL_A.id] }),
+    )
+    const hints = hintsOf(input(prompts, noDomain))
+    expect(hints.map((h) => h.kind)).toEqual(['ownSiteSetup', 'prompt', 'prompt'])
+    expect(hints[0]?.priority).toBeLessThan(hints[1]?.priority ?? 0)
+  })
+
+  it(`未設定の案内は、ほかの施策の優先度が高くても先頭に出し、合わせて ${MAX_HINTS} 件までにする`, () => {
+    // 競合だけが出る質問 5 つ（どれも a.example と b.example を引用）→ 質問 5・サイト 2 の候補
+    const prompts = [0, 1, 2, 3, 4].flatMap((p) =>
+      times(20, {
+        promptId: `q${p}`,
+        competitorIds: [RIVAL_A.id],
+        citedDomains: ['a.example', 'b.example'],
       }),
     )
-    expect(hints.find((h) => h.kind === 'ownSite')).toMatchObject({
-      kind: 'ownSite',
-      domain: null,
-      ownRate: null,
-      topDomain: 'hikaku.example',
+    // 気になる点の候補（優先度はいちばん低い）
+    const negatives = times(MIN_NEGATIVE_RESPONSES, {
+      promptId: 'qn',
+      brandMentioned: true,
+      sentiment: 'negative',
+      answerText: 'サンプル会計：サポートの返信が遅いという声もあります。',
     })
+    const hints = hintsOf(input([...prompts, ...negatives], noDomain))
+    expect(hints.map((h) => h.kind)).toEqual(['ownSiteSetup', 'site', 'site', 'prompt', 'prompt'])
+  })
+
+  it(`未設定の案内を出すときも、${MIN_RESPONSES} 件に届くまでは何も出さない`, () => {
+    expect(buildHints(input(times(MIN_RESPONSES - 1), noDomain)).status).toBe('waiting')
   })
 
   it(`引用のある回答が ${MIN_GROUP_RESPONSES} 件未満なら出さない`, () => {
@@ -343,7 +466,7 @@ describe('自社サイトが参考にされていない', () => {
 
 describe('並べ方', () => {
   it(`優先度の高い順に最大 ${MAX_HINTS} 件、1 種類につき 2 件まで出す`, () => {
-    // すすめられていない質問を 4 つ（差がそれぞれ違う）＋ 自社サイトの施策
+    // 名前が出にくい質問を 4 つ（差がそれぞれ違う）＋ 自社サイトの施策
     const prompts = [0.9, 0.8, 0.7, 0.6].flatMap((rate, p) =>
       Array.from({ length: 20 }, (_, i) =>
         answer({
@@ -364,24 +487,5 @@ describe('並べ方', () => {
 
   it('何も当てはまらなければ、空の一覧を返す', () => {
     expect(hintsOf(input(neutralFiller()))).toEqual([])
-  })
-})
-
-describe('自社について書いた文の抜き出し', () => {
-  it('名前（表記ゆれ・別名を含む）が出てくる文だけを、重複なく返す', () => {
-    const text =
-      'ミライ会計が人気です。サンプル会計は料金が高めです！\n- さんぷる会計：設定が難しいとの声も。\nSK は機能が少ない。サンプル会計は料金が高めです！'
-    expect(sentencesMentioning(text, ['サンプル会計', 'SK'])).toEqual([
-      'サンプル会計は料金が高めです！',
-      'さんぷる会計：設定が難しいとの声も。',
-      'SK は機能が少ない。',
-    ])
-  })
-
-  it('長すぎる文は切り詰める', () => {
-    const long = `サンプル会計は${'あ'.repeat(300)}。`
-    const [sentence] = sentencesMentioning(long, ['サンプル会計'])
-    expect(sentence?.length).toBeLessThanOrEqual(121)
-    expect(sentence?.endsWith('…')).toBe(true)
   })
 })

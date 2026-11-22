@@ -2,7 +2,13 @@ import { analysis, type Brand, citation, mention, prompt, response, run } from '
 import type { LlmMode } from '@llmo/llm'
 import { and, desc, eq, gte, inArray, isNotNull, type SQL, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { buildHints, HINT_WINDOW_DAYS, type HintResponse, type HintsResult } from '@/lib/hints'
+import {
+  buildHints,
+  type CollectionSettings,
+  HINT_WINDOW_DAYS,
+  type HintResponse,
+  type HintsResult,
+} from '@/lib/hints'
 import { addDays, todayInTokyo } from '@/lib/stats'
 import { promptOfResponse, runDate } from './metrics'
 import { RESPONSE_VIEW_WITH } from './prompts'
@@ -121,10 +127,13 @@ export type HintBrand = Pick<
   prompts: unknown[]
 }
 
-/** 毎日の自動計測で、1 日に集まる回答の数 */
-function responsesPerDay(brand: HintBrand): number {
-  if (!brand.scheduleEnabled) return 0
-  return brand.prompts.length * brand.providers.length * brand.samplesPerPrompt
+/** 今の計測の設定。1 日に集まる回答の数は、自動計測がオンかどうかに関係なく設定から計算する */
+function collectionSettings(brand: HintBrand): CollectionSettings {
+  return {
+    scheduleEnabled: brand.scheduleEnabled,
+    activePrompts: brand.prompts.length,
+    responsesPerDay: brand.prompts.length * brand.providers.length * brand.samplesPerPrompt,
+  }
 }
 
 /** 施策の一覧と、その根拠の回答 */
@@ -141,7 +150,7 @@ export async function getBrandHints(
     brand: { name: brand.name, aliases: brand.aliases, domain: brand.domain },
     competitors: brand.competitors.map((c) => ({ id: c.id, name: c.name, domain: c.domain })),
     responses,
-    responsesPerDay: responsesPerDay(brand),
+    collection: collectionSettings(brand),
   })
   const evidenceIds =
     hints.status === 'ready'
