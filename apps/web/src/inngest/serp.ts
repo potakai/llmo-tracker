@@ -3,6 +3,7 @@ import {
   collectSerpResults,
   giveUpSerpTasks,
   postSerpTasks,
+  recoverStaleSerpResults,
   type SerpDeps,
   tokyoDate,
   waitAndCollectSerpResults,
@@ -45,6 +46,9 @@ const serpDeps = (): SerpDeps => ({
  * 二重に課金しないように：
  * - 行は (キーワード, 日付) で一意。関数のやり直しでも、同じ日のキーワードは 1 回しか頼まない
  * - task ID は待つ前に DB に保存し、やり直しのときは保存した ID で結果を取りに行く
+ *
+ * 期限：行を作ってから 2 時間（SERP_JOB_DEADLINE_MINUTES）を過ぎた行には、新しく頼まず・取りに行かず、
+ * 理由付きで failed にする。それでも残った行は recover-stale-serp が 3 時間で拾う（packages/runner/src/serp-limits.ts）
  */
 export const serpDailyFunction = inngest.createFunction(
   {
@@ -87,5 +91,22 @@ export const serpDailyFunction = inngest.createFunction(
     const summary = { date, claimed, rounds, pending, gaveUp }
     logger.info('Google の検索が終わりました', summary)
     return summary
+  },
+)
+
+/**
+ * Google の検索の行の回収（10 分ごと）。作ってから 3 時間（DEFAULT_SERP_STALE_AFTER_MINUTES）を過ぎても
+ * pending の行を、理由付きで failed にする（頼み直しはしない）。serp-daily は 2 時間で自分の行を閉じるので、
+ * ここで拾うのは、ジョブが取り消された・落ちた・onFailure が失敗したなどで残った行だけ。
+ * run の回収（recover-stale-runs）とは別の関数にして、片方のリトライが尽きても、もう片方は動くようにしている
+ */
+export const recoverStaleSerpFunction = inngest.createFunction(
+  { id: 'recover-stale-serp', triggers: [{ cron: '*/10 * * * *' }] },
+  async ({ step, logger }) => {
+    const recovered = await step.run('recover-stale-serp', () => recoverStaleSerpResults(db))
+    if (recovered > 0) {
+      logger.warn('結果待ちのまま残っていた Google の検索を終わらせました', { recovered })
+    }
+    return { recovered }
   },
 )

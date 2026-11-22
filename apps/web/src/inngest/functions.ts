@@ -5,7 +5,6 @@ import {
   executeRunSlice,
   RunNotFoundError,
   recoverStaleRuns,
-  recoverStaleSerpResults,
   tokyoDate,
 } from '@llmo/runner'
 import { NonRetriableError } from 'inngest'
@@ -13,7 +12,7 @@ import { db } from '@/lib/db'
 import { getLlmPolicy } from '@/lib/llm'
 import { inngest } from './client'
 import { createRunRequestedEvent, runRequested } from './events'
-import { serpDailyFunction } from './serp'
+import { recoverStaleSerpFunction, serpDailyFunction } from './serp'
 
 // ジョブの中身はすべて packages/runner にある。ここはそれを Inngest のステップに載せるだけ
 
@@ -98,17 +97,14 @@ export const dailyRunsFunction = inngest.createFunction(
 /**
  * 止まった run の回収（10 分ごと）。30 分なにも進んでいない queued / running の run を終わらせる。
  * ジョブが落ちた・イベントを送る前に失敗したなどで残った run が、次の実行を止め続けないようにする。
- * Google の検索の行も同じように回収する：serp-daily が取り消された・onFailure が失敗したなどで残った
- * pending の行を、作ってから 3 時間（DEFAULT_SERP_STALE_AFTER_MINUTES）で failed にする（頼み直しはしない）
+ * Google の検索の行の回収は、別の関数（recover-stale-serp）にしている（片方のリトライが尽きても、もう片方は動く）
  */
 export const recoverStaleRunsFunction = inngest.createFunction(
   { id: 'recover-stale-runs', triggers: [{ cron: '*/10 * * * *' }] },
   async ({ step, logger }) => {
     const recovered = await step.run('recover-stale-runs', () => recoverStaleRuns(db))
     if (recovered.length > 0) logger.warn('止まっていた run を終わらせました', { recovered })
-    const serp = await step.run('recover-stale-serp', () => recoverStaleSerpResults(db))
-    if (serp > 0) logger.warn('結果待ちのまま残っていた Google の検索を終わらせました', { serp })
-    return { recovered: recovered.length, serp }
+    return { recovered: recovered.length }
   },
 )
 
@@ -117,4 +113,5 @@ export const functions = [
   dailyRunsFunction,
   recoverStaleRunsFunction,
   serpDailyFunction,
+  recoverStaleSerpFunction,
 ]
