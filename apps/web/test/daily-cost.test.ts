@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateDailyRunCostUsd, formatUsd, freeSearchTierNotes } from '@/lib/daily-cost'
+import { estimateDailyRunCostRange, estimateDailyRunCostUsd, formatUsd } from '@/lib/daily-cost'
 
 const perAnswerUsd = { openai: 0.02, gemini: 0.03 }
 
@@ -43,44 +43,46 @@ describe('formatUsd', () => {
   })
 })
 
-describe('freeSearchTierNotes', () => {
+describe('estimateDailyRunCostRange', () => {
   const costs = {
     perAnswerUsd: { openai: 0.019, gemini: 0.007 },
-    beyondFreeSearchesUsd: { openai: 0.019, gemini: 0.035 },
+    beyondFreeSearchesUsd: { openai: 0.019, gemini: 0.0434 },
     freeSearchesPerMonth: 5_000,
   }
 
-  it('検索の無料枠を超えると高くなる AI だけ、超えたときの 1 回答あたりと毎朝の額を出す', () => {
-    const notes = freeSearchTierNotes({
+  it('検索の無料枠が残っている場合と、使い切った場合の毎朝の額を両方出す', () => {
+    const range = estimateDailyRunCostRange({
       samplesPerPrompt: 5,
       promptCount: 2,
       providers: ['openai', 'gemini'],
       costs,
     })
-    expect(notes).toHaveLength(1)
-    expect(notes[0]?.provider).toBe('gemini')
-    expect(notes[0]?.perAnswerUsd).toBeCloseTo(0.035, 6)
-    // 5 回 × 2 問 × (ChatGPT 0.019 + 無料枠を超えた Gemini 0.035)
-    expect(notes[0]?.dailyUsd).toBeCloseTo(0.54, 6)
+    // 5 回 × 2 問 × (0.019 + 0.007) と 5 回 × 2 問 × (0.019 + 0.0434)
+    expect(range.withinFreeSearches).toBeCloseTo(0.26, 6)
+    expect(range.beyondFreeSearches).toBeCloseTo(0.624, 6)
+    expect(range.dependsOnFreeSearches).toBe(true)
   })
 
-  it('計測しない AI の注記は出さない', () => {
-    const notes = freeSearchTierNotes({
+  it('無料枠のある AI（Gemini）を計測しないなら、額は 1 つ（無料枠に左右されない）', () => {
+    const range = estimateDailyRunCostRange({
       samplesPerPrompt: 5,
       promptCount: 2,
       providers: ['openai'],
       costs,
     })
-    expect(notes).toEqual([])
+    expect(range.withinFreeSearches).toBeCloseTo(0.19, 6)
+    expect(range.beyondFreeSearches).toBeCloseTo(0.19, 6)
+    expect(range.dependsOnFreeSearches).toBe(false)
   })
 
-  it('無料枠を超えたときの額がわからない AI の注記は出さない', () => {
-    const notes = freeSearchTierNotes({
+  it('目安がわからない AI があれば、その額は null', () => {
+    const range = estimateDailyRunCostRange({
       samplesPerPrompt: 1,
       promptCount: 1,
       providers: ['gemini'],
       costs: { ...costs, beyondFreeSearchesUsd: { openai: 0.019, gemini: null } },
     })
-    expect(notes).toEqual([])
+    expect(range.withinFreeSearches).toBeCloseTo(0.007, 6)
+    expect(range.beyondFreeSearches).toBeNull()
   })
 })

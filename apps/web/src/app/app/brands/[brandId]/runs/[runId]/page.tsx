@@ -1,6 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { COST_ESTIMATE_NOTE, formatDate, RUN_STATUS_LABEL } from '@/components/labels'
+import {
+  COST_ESTIMATE_NOTE,
+  formatDate,
+  RUN_CANCEL_REASON_LABEL,
+  RUN_STATUS_LABEL,
+} from '@/components/labels'
 import { MarkLegend, ResponseItem } from '@/components/response-item'
 import { sampleRunNotice } from '@/lib/sample-run'
 import { loadBrandForPage } from '@/server/brand-page'
@@ -50,6 +55,9 @@ export default async function RunPage({
           {RUN_STATUS_LABEL[run.status]}。回答 {run.responses.length} 件、費用の目安 $
           {run.totalCostUsd.toFixed(2)}
         </p>
+        {run.cancelReason && (
+          <p className="mt-1 text-sm">{RUN_CANCEL_REASON_LABEL[run.cancelReason]}。</p>
+        )}
         <p className="mt-1 text-sm text-ink-soft">{COST_ESTIMATE_NOTE}</p>
         {notice?.kind === 'all' && (
           <p className={NOTICE_CLASS}>

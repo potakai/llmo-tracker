@@ -33,35 +33,35 @@ export function estimateDailyRunCostUsd(input: {
   return input.samplesPerPrompt * input.promptCount * perPromptSample
 }
 
-export type FreeSearchTierNote = {
-  provider: ProviderKey
-  /** 無料枠を超えたときの 1 回答あたりの額 */
-  perAnswerUsd: number
-  /** その AI だけ無料枠を超えたときの、毎朝の計測 1 回あたりの額 */
-  dailyUsd: number | null
+export type DailyRunCostRange = {
+  /** 検索の無料枠（Gemini）が残っている場合の、毎朝の計測 1 回あたりの額 */
+  withinFreeSearches: number | null
+  /** 検索の無料枠を使い切った場合の額 */
+  beyondFreeSearches: number | null
+  /** 無料枠が残っているかどうかで額が変わるか（無料枠のある AI を計測するか） */
+  dependsOnFreeSearches: boolean
 }
 
 /**
- * 検索の無料枠を超えると高くなる AI（Gemini）ごとの注記。
- * ふだんの目安は無料枠に収まる前提なので、超えたらいくらになるかを並べて見せる
+ * 毎朝の計測 1 回あたりの額を、検索の無料枠が残っている場合と使い切った場合の両方で出す。
+ * 無料枠はアプリ全体（すべてのブランド）で共有しているので、どちらになるかはほかのブランドの計測にもよる
  */
-export function freeSearchTierNotes(input: {
+export function estimateDailyRunCostRange(input: {
   samplesPerPrompt: number
   promptCount: number
   providers: readonly ProviderKey[]
   costs: AnswerCosts
-}): FreeSearchTierNote[] {
-  const { costs } = input
-  return input.providers.flatMap((provider) => {
-    const usual = costs.perAnswerUsd[provider]
-    const beyond = costs.beyondFreeSearchesUsd[provider]
-    if (usual === null || beyond === null || beyond <= usual) return []
-    const dailyUsd = estimateDailyRunCostUsd({
-      ...input,
-      perAnswerUsd: { ...costs.perAnswerUsd, [provider]: beyond },
-    })
-    return [{ provider, perAnswerUsd: beyond, dailyUsd }]
+}): DailyRunCostRange {
+  const { costs, ...run } = input
+  const withinFreeSearches = estimateDailyRunCostUsd({ ...run, perAnswerUsd: costs.perAnswerUsd })
+  const beyondFreeSearches = estimateDailyRunCostUsd({
+    ...run,
+    perAnswerUsd: costs.beyondFreeSearchesUsd,
   })
+  const dependsOnFreeSearches = input.providers.some(
+    (p) => costs.perAnswerUsd[p] !== costs.beyondFreeSearchesUsd[p],
+  )
+  return { withinFreeSearches, beyondFreeSearches, dependsOnFreeSearches }
 }
 
 /** 費用の表示。1 ドル未満は細かい額まで見えるように 3 桁 */

@@ -16,7 +16,7 @@ import {
   type ProviderId,
   type Providers,
 } from '@llmo/llm'
-import { and, eq, gte, isNull, notLike, or, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, notLike, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
@@ -49,7 +49,7 @@ export type ExecuteRunDeps = {
 
 export type RunSummary = {
   runId: string
-  status: 'succeeded' | 'partial' | 'failed'
+  status: 'succeeded' | 'partial' | 'failed' | 'cancelled'
   total: number
   succeeded: number
   failed: number
@@ -63,7 +63,7 @@ type Task = {
   sampleIndex: number
 }
 
-const FINISHED = new Set(['succeeded', 'partial', 'failed'])
+const FINISHED = new Set(['succeeded', 'partial', 'failed', 'cancelled'])
 
 /** run がない（ブランドごと消された など）。ジョブはリトライしても意味がないので、すぐ諦める */
 export class RunNotFoundError extends Error {
@@ -133,14 +133,20 @@ export async function executeRunSlice(
     },
   })
   if (!target) throw new RunNotFoundError(runId)
-  if (FINISHED.has(target.status)) return { done: true, summary: await summarize(db, runId) }
+  // 終わっている run（取り消した run を含む）なら何もしない
+  if (FINISHED.has(target.status)) {
+    return { done: true, summary: await summarizeFinished(db, runId, target.status) }
+  }
   const { providers, extractor } =
     'llmFor' in deps ? deps.llmFor(target.brand.organizationId) : deps
 
-  await db
+  // 読んだあとに取り消されていたら動かさない（取り消した run を running に戻さない）
+  const [started] = await db
     .update(runTable)
     .set({ status: 'running', startedAt: sql`coalesce(${runTable.startedAt}, now())` })
-    .where(eq(runTable.id, runId))
+    .where(and(eq(runTable.id, runId), inArray(runTable.status, ['queued', 'running'])))
+    .returning({ id: runTable.id })
+  if (!started) return executeRunSlice(deps, runId, options)
 
   const brand = target.brand
   const tasks = await pendingTasks(db, runId, brand, options.retryFailedBefore)
@@ -371,6 +377,12 @@ export function toCitations(sources: AskResult['sources'], brandDomain: string |
     })
   }
   return rows
+}
+
+/** 終わっている run の集計。取り消した run は、回答の数から決めずに cancelled のまま返す */
+async function summarizeFinished(db: Db, runId: string, status: string): Promise<RunSummary> {
+  const summary = await summarize(db, runId)
+  return status === 'cancelled' ? { ...summary, status: 'cancelled' } : summary
 }
 
 async function summarize(db: Db, runId: string): Promise<RunSummary> {

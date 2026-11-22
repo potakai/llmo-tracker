@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api-client'
+import { createLatestOnlySaver } from '@/lib/latest-only-saver'
 
 type BrandOption = { id: string; name: string }
 
@@ -70,20 +71,28 @@ export function BrandSwitcher({ brands, rememberedBrandId, canAddBrand }: BrandS
   )
 }
 
+/** 今のブランドをサーバーに覚えてもらう（Cookie）。応答が ok でなければ保存できていないものとして扱う */
+async function saveCurrentBrand(brandId: string): Promise<boolean> {
+  try {
+    const res = await api['current-brand'].$put({ json: { brandId } })
+    if (!res.ok) console.warn('最後に見たブランドを覚えられませんでした', res.status)
+    return res.ok
+  } catch (error: unknown) {
+    console.warn('最後に見たブランドを覚えられませんでした', error)
+    return false
+  }
+}
+
 /**
- * 開いているブランドが覚えているものと違えば、サーバーに覚えてもらう（Cookie）。
- * 覚えられなくても画面はそのまま使える（/app で開くブランドが変わらないだけ）ので、失敗しても止めない
+ * 開いているブランドを、最後に見たブランドとして覚えてもらう。
+ * 素早く切り替えても最後に開いたブランドが残るよう、保存は 1 つずつ順に行う（createLatestOnlySaver）。
+ * 覚えられなくても画面はそのまま使える（/app で開くブランドが変わらないだけ）ので、画面は止めない
  */
 function useRememberBrand(brandId: string | undefined, rememberedBrandId: string | null) {
-  const remembered = useRef(rememberedBrandId)
+  const [saver] = useState(() => createLatestOnlySaver(saveCurrentBrand, rememberedBrandId))
   useEffect(() => {
-    if (!brandId || brandId === remembered.current) return
-    remembered.current = brandId
-    api['current-brand'].$put({ json: { brandId } }).catch((error: unknown) => {
-      console.warn('最後に見たブランドを覚えられませんでした', error)
-      remembered.current = null
-    })
-  }, [brandId])
+    if (brandId) void saver.request(brandId)
+  }, [brandId, saver])
 }
 
 /** メニューの外を押すか Esc で閉じる */

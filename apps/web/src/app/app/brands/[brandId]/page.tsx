@@ -7,6 +7,7 @@ import {
   PROMPT_KIND_LABEL,
   PROVIDER_LABEL,
   percent,
+  RUN_CANCEL_REASON_LABEL,
   RUN_STATUS_LABEL,
 } from '@/components/labels'
 import { PromptKindBadge } from '@/components/prompt-kind-badge'
@@ -369,6 +370,11 @@ function RunHistory({ brandId, runs, llmMode }: RunHistoryProps) {
                     className={`px-4 py-2 ${r.status === 'failed' || r.status === 'partial' ? 'text-danger' : ''}`}
                   >
                     {RUN_STATUS_LABEL[r.status]}
+                    {r.cancelReason && (
+                      <span className="block text-xs text-ink-soft">
+                        {RUN_CANCEL_REASON_LABEL[r.cancelReason]}
+                      </span>
+                    )}
                   </td>
                   <td className="num px-4 py-2 text-right">
                     {r.succeeded}

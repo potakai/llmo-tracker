@@ -153,10 +153,10 @@ describe('typicalAnswerCostUsd', () => {
 
   it('検索の無料枠を使い切ったあとは、検索の分も入る（無料枠のない ChatGPT は変わらない）', () => {
     const beyond = { at: NOV_2026, beyondFreeSearches: true }
-    // Gemini：上の額 + 検索 2 回 × $14/1k
+    // Gemini：上の額 + 検索 2.6 回（本番の実測：25 回答で 65 回）× $14/1k
     expect(
       typicalAnswerCostUsd({ provider: 'gemini', model: 'gemini-3.8-flash', ...beyond }),
-    ).toBeCloseTo(0.000075 + 0.0069375 + 0.028, 5) // 費用は小数 6 桁に丸める
+    ).toBeCloseTo(0.000075 + 0.0069375 + 0.0364, 5) // 費用は小数 6 桁に丸める
     expect(
       typicalAnswerCostUsd({ provider: 'openai', model: 'gpt-5.4-mini', ...beyond }),
     ).toBeCloseTo(0.019, 6)

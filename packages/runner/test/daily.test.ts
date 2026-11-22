@@ -1,8 +1,8 @@
 import { brand as brandTable, organization, prompt, run } from '@llmo/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { createDailyRuns, createManualRun, isDemoMetadata, tokyoDate } from '../src'
-import { db, seedBrand } from './fixtures'
+import { createDailyRuns, createManualRun, executeRun, isDemoMetadata, tokyoDate } from '../src'
+import { countingProviders, db, extractor, seedBrand } from './fixtures'
 
 // テストどうしで日付がぶつからないように、テストごとに別の日を使う
 let day = 0
@@ -104,5 +104,70 @@ describe('createDailyRuns の toDispatch', () => {
     // 動き出したら対象から外れる
     await db.update(run).set({ status: 'running' }).where(eq(run.id, runId!))
     expect((await createDailyRuns(db, date)).toDispatch).not.toContain(runId)
+  })
+})
+
+describe('自動計測をオフにしたあとの、朝のジョブの再試行', () => {
+  /** その日の自動 run を作り、ジョブに渡す前に落ちた（queued のまま）状態にしてから、自動計測をオフにする */
+  async function queuedScheduledRunThenTurnedOff() {
+    const { brand } = await seedBrand({ samplesPerPrompt: 1 })
+    const date = nextDate()
+    const first = await createDailyRuns(db, date)
+    const runId = first.created.find((c) => c.brandId === brand.id)!.runId
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+    return { brand, date, runId }
+  }
+
+  it('queued の自動 run は配信せず、取り消し（理由：自動計測がオフ）にして終わらせる', async () => {
+    const { date, runId } = await queuedScheduledRunThenTurnedOff()
+
+    const retry = await createDailyRuns(db, date)
+    expect(retry.toDispatch).not.toContain(runId)
+    expect(retry.cancelled).toContain(runId)
+
+    const [row] = await db.select().from(run).where(eq(run.id, runId))
+    expect(row).toMatchObject({ status: 'cancelled', cancelReason: 'schedule_disabled' })
+    expect(row?.finishedAt).not.toBeNull()
+  })
+
+  it('取り消したあとは、手動の計測がブロックされない', async () => {
+    const { brand, date } = await queuedScheduledRunThenTurnedOff()
+    await createDailyRuns(db, date)
+
+    const manual = await createManualRun(db, brand.id)
+    expect(manual).toMatchObject({ trigger: 'manual', status: 'queued' })
+  })
+
+  it('取り消した run がジョブに届いても、AI には聞かず、取り消しのまま', async () => {
+    const { date, runId } = await queuedScheduledRunThenTurnedOff()
+    await createDailyRuns(db, date)
+
+    const counting = countingProviders()
+    const summary = await executeRun({ db, providers: counting.providers, extractor }, runId)
+    expect(counting.calls).toEqual({ openai: 0, gemini: 0 })
+    expect(summary.status).toBe('cancelled')
+    const [row] = await db.select({ status: run.status }).from(run).where(eq(run.id, runId))
+    expect(row?.status).toBe('cancelled')
+  })
+
+  it('オンのブランドの queued の run と、動き出した run は取り消さない', async () => {
+    const on = await seedBrand({ samplesPerPrompt: 1 })
+    const off = await seedBrand({ samplesPerPrompt: 1 })
+    const date = nextDate()
+    const first = await createDailyRuns(db, date)
+    const onRunId = first.created.find((c) => c.brandId === on.brand.id)!.runId
+    const offRunId = first.created.find((c) => c.brandId === off.brand.id)!.runId
+    await db.update(run).set({ status: 'running' }).where(eq(run.id, offRunId))
+    await db
+      .update(brandTable)
+      .set({ scheduleEnabled: false })
+      .where(eq(brandTable.id, off.brand.id))
+
+    const retry = await createDailyRuns(db, date)
+    expect(retry.toDispatch).toContain(onRunId)
+    expect(retry.cancelled).not.toContain(onRunId)
+    expect(retry.cancelled).not.toContain(offRunId)
+    const [offRow] = await db.select({ status: run.status }).from(run).where(eq(run.id, offRunId))
+    expect(offRow?.status).toBe('running')
   })
 })

@@ -49,14 +49,17 @@ const updatedAt = () =>
 /** 対象のAI。追加するときはここに値を足し、取得処理に実装を1つ足す */
 export const providerEnum = pgEnum('provider', ['openai', 'gemini'])
 export const runTriggerEnum = pgEnum('run_trigger', ['scheduled', 'manual'])
-/** partial = 一部の回答だけ失敗した */
+/** partial = 一部の回答だけ失敗した。cancelled = 動かす前に取り消した（理由は run.cancelReason） */
 export const runStatusEnum = pgEnum('run_status', [
   'queued',
   'running',
   'succeeded',
   'partial',
   'failed',
+  'cancelled',
 ])
+/** run を取り消した理由。schedule_disabled = 配信する前に、ブランドの自動計測がオフになった */
+export const runCancelReasonEnum = pgEnum('run_cancel_reason', ['schedule_disabled'])
 export const resultStatusEnum = pgEnum('result_status', ['succeeded', 'failed'])
 export const sentimentEnum = pgEnum('sentiment', ['positive', 'neutral', 'negative'])
 /** unknown = まだ登録されていない会社・サービス */
@@ -161,6 +164,8 @@ export const run = pgTable(
     scheduledFor: date({ mode: 'string' }),
     startedAt: timestamp({ withTimezone: true }),
     finishedAt: timestamp({ withTimezone: true }),
+    /** 取り消した理由（status = cancelled のときだけ入る） */
+    cancelReason: runCancelReasonEnum(),
     totalCostUsd: numeric({ precision: 10, scale: 4, mode: 'number' }).notNull().default(0),
     createdAt: createdAt(),
   },

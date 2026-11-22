@@ -133,14 +133,15 @@ function billableSearchCount(
  * - Gemini 約 $0.17（1 回答 約 $0.007。検索は月 5,000 回の無料枠に収まり、請求なし）
  * だったので、この料金表で計算すると 1 回答あたりの額がそれに合うトークン数にしている。
  * 請求は AI ごとの合計しかわからないので、入力と出力の内訳は推定。
- * Gemini の検索の回数（2 回）は実測ではなく仮の値で、無料枠を超えたときの額にだけ効く
+ * Gemini の検索の回数（1 回答あたり 2.6 回）も同じ計測の実測：25 回答で検索 65 回
+ * （response.search_count の合計）。無料枠を使い切ったあとの額にだけ効く
  */
 const TYPICAL_ANSWER_USAGE: Record<
   ProviderId,
   { inputTokens: number; outputTokens: number; searchCount: number }
 > = {
   openai: { inputTokens: 6_000, outputTokens: 1_000, searchCount: 1 },
-  gemini: { inputTokens: 100, outputTokens: 1_850, searchCount: 2 },
+  gemini: { inputTokens: 100, outputTokens: 1_850, searchCount: 2.6 },
 }
 
 /**

@@ -170,6 +170,25 @@ describe('自動計測のオン／オフ', () => {
     expect(runs).toHaveLength(1)
   })
 
+  it('取り消した自動 run は、計測の履歴に状態と理由つきで出て、手動の計測を止めない', async () => {
+    const { client, first } = await setup()
+    await db.insert(run).values({
+      brandId: first.id,
+      trigger: 'scheduled',
+      scheduledFor: '2031-01-01',
+      status: 'cancelled',
+      cancelReason: 'schedule_disabled',
+      finishedAt: new Date(),
+    })
+
+    const list = await client.get(`/api/brands/${first.id}/runs`)
+    expect(list.json.runs[0]).toMatchObject({
+      status: 'cancelled',
+      cancelReason: 'schedule_disabled',
+    })
+    expect((await client.post(`/api/brands/${first.id}/runs`, {})).status).toBe(202)
+  })
+
   it('新しく追加したブランドは、自動計測がオンになっている', async () => {
     const { first } = await setup()
     const [row] = await db
