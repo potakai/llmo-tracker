@@ -24,6 +24,7 @@ import {
   collectSerpResults,
   giveUpSerpTasks,
   postSerpTasks,
+  recoverStaleSerpResults,
   type SerpDeps,
   waitAndCollectSerpResults,
 } from '../src'
@@ -670,6 +671,97 @@ describe('結果を取りに行く順番（未完了の行ばかり繰り返さ�
     )
 
     expect(result).toEqual({ rounds: 1, pending: 0 })
+  })
+})
+
+describe('recoverStaleSerpResults（ジョブが消えて残った pending の行の回収）', () => {
+  /** 状態の違う pending の行を 3 つ（頼む前・頼み始めて task ID がない・task ID がある）作る */
+  async function pendingRowsInEachState() {
+    const keywords = {
+      notPosted: uniqueKeyword('頼む前'),
+      attempted: uniqueKeyword('頼み始めた'),
+      posted: uniqueKeyword('頼んだ'),
+    }
+    const { prompts } = await seedBrand({ keywords: Object.values(keywords) })
+    const date = nextDate()
+    const idOf = (text: string) => prompts.find((p) => p.text === text)!.id
+    await claimSerpTasks(
+      db,
+      date,
+      Object.values(keywords).map((k) => ({ promptId: idOf(k), mode: 'fake' as const })),
+    )
+    await db
+      .update(serpResult)
+      .set({ postAttemptedAt: new Date() })
+      .where(eq(serpResult.promptId, idOf(keywords.attempted)))
+    await db
+      .update(serpResult)
+      .set({ postAttemptedAt: new Date(), taskId: 'task-1', postedAt: new Date() })
+      .where(eq(serpResult.promptId, idOf(keywords.posted)))
+    return { keywords, date, idOf, ids: keywordIds(prompts) }
+  }
+
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60_000)
+
+  it('期限を過ぎた pending の行を、状態ごとの理由を付けて failed にする', async () => {
+    const { keywords, date, idOf, ids } = await pendingRowsInEachState()
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(4) })
+      .where(inArray(serpResult.promptId, ids))
+
+    const recovered = await recoverStaleSerpResults(db)
+
+    expect(recovered).toBeGreaterThanOrEqual(3)
+    const errorOf = async (text: string) => (await rowsOf([idOf(text)], date))[0]?.error
+    expect(await errorOf(keywords.notPosted)).toBe('検索を頼む前に、ジョブが終わりました')
+    expect(await errorOf(keywords.attempted)).toMatch(/頼めたか確かめられませんでした/)
+    expect(await errorOf(keywords.posted)).toBe('時間内に検索の結果が出ませんでした')
+    expect((await rowsOf(ids, date)).map((r) => r.status)).toEqual(['failed', 'failed', 'failed'])
+  })
+
+  it('期限内の pending の行と、終わった行には触らない', async () => {
+    const { date, ids } = await pendingRowsInEachState()
+
+    await recoverStaleSerpResults(db)
+
+    expect((await rowsOf(ids, date)).map((r) => r.status)).toEqual([
+      'pending',
+      'pending',
+      'pending',
+    ])
+  })
+
+  it('頼み始めた印があって task ID のない行は、回収したあとも頼み直さない', async () => {
+    const { keywords, date, ids } = await pendingRowsInEachState()
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(4) })
+      .where(inArray(serpResult.promptId, ids))
+    await recoverStaleSerpResults(db)
+    const provider = recordingProvider('fake')
+
+    await postSerpTasks(depsWith({ fake: provider.provider }), date, {
+      ...UNLIMITED,
+      promptIds: ids,
+    })
+
+    expect(provider.posted).not.toContain(keywords.attempted)
+    expect(provider.posted).toEqual([])
+  })
+
+  it('期限は変えられる（既定は、毎朝のジョブが待つ上限より十分長い）', async () => {
+    const { date, ids } = await pendingRowsInEachState()
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(2) })
+      .where(inArray(serpResult.promptId, ids))
+
+    await recoverStaleSerpResults(db)
+    expect((await rowsOf(ids, date)).every((r) => r.status === 'pending')).toBe(true)
+
+    await recoverStaleSerpResults(db, { staleAfterMinutes: 60 })
+    expect((await rowsOf(ids, date)).every((r) => r.status === 'failed')).toBe(true)
   })
 })
 

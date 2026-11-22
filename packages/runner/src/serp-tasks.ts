@@ -8,7 +8,7 @@ import {
 } from '@llmo/db'
 import type { Extractor } from '@llmo/llm'
 import { type FetchedTask, SerpApiError, type SerpPolicy } from '@llmo/serp'
-import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { runUntilDeadline } from './deadline'
 import { listScheduledBrands } from './scheduled-brands'
 import { extractAiOverview, type SerpBrand, saveSerpSuccess } from './serp-save'
@@ -369,22 +369,50 @@ async function competitorsOf(db: Db, brandIds: string[]) {
 }
 
 /**
- * その日のまだ pending の行を、すべて failed にして終わらせる（待つのをやめるとき・ジョブが落ちたとき）。
- * 理由は行の状態で分ける。終わらせた行の数を返す
+ * 回収するまでの時間の初期値（行を作ってから）。毎朝のジョブは、頼む・待つ（5 分 × 12 回）・取りに行くで
+ * 1 時間ほどかかり、Inngest のリトライが入ると延びる。それより十分長くして、動いているジョブの行を終わらせない
  */
-export async function giveUpSerpTasks(db: Db, date: string): Promise<number> {
+export const DEFAULT_SERP_STALE_AFTER_MINUTES = 180
+
+/** pending の行を終わらせるときの理由。頼んだか・頼めたか確かめられないか・頼む前か、で分ける */
+const giveUpReason = sql`case
+  when ${serpResult.taskId} is not null then '時間内に検索の結果が出ませんでした'
+  when ${serpResult.postAttemptedAt} is not null then '検索を頼めたか確かめられませんでした（二重に費用がかからないよう、頼み直していません）'
+  else '検索を頼む前に、ジョブが終わりました' end`
+
+/**
+ * pending の行を、理由を付けて failed にする。終わった行には触らない。
+ * failed にした行は二度と頼まない（頼み始めた印があって task ID のない行も、頼み直さない）
+ */
+async function failPendingSerp(db: Db, where: SQL): Promise<number> {
   const rows = await db
     .update(serpResult)
-    .set({
-      status: 'failed',
-      error: sql`case
-        when ${serpResult.taskId} is not null then '時間内に検索の結果が出ませんでした'
-        when ${serpResult.postAttemptedAt} is not null then '検索を頼めたか確かめられませんでした（二重に費用がかからないよう、頼み直していません）'
-        else '検索を頼む前に、ジョブが終わりました' end`,
-    })
-    .where(and(eq(serpResult.searchedOn, date), eq(serpResult.status, 'pending')))
+    .set({ status: 'failed', error: giveUpReason })
+    .where(and(eq(serpResult.status, 'pending'), where))
     .returning({ id: serpResult.id })
   return rows.length
+}
+
+/**
+ * その日のまだ pending の行を、すべて failed にして終わらせる（待つのをやめるとき・ジョブが落ちたとき）。
+ * 終わらせた行の数を返す
+ */
+export async function giveUpSerpTasks(db: Db, date: string): Promise<number> {
+  return failPendingSerp(db, eq(serpResult.searchedOn, date))
+}
+
+/**
+ * 期限を過ぎた pending の行を回収する（recover-stale-runs と同じ考え方）。
+ * ジョブが取り消された・onFailure が失敗したなどで、give-up まで届かずに残った行を終わらせる。
+ * 判定と更新を 1 つの UPDATE で行う。回収した行の数を返す
+ */
+export async function recoverStaleSerpResults(
+  db: Db,
+  options: { staleAfterMinutes?: number; now?: Date } = {},
+): Promise<number> {
+  const minutes = options.staleAfterMinutes ?? DEFAULT_SERP_STALE_AFTER_MINUTES
+  const cutoff = new Date((options.now ?? new Date()).getTime() - minutes * 60_000)
+  return failPendingSerp(db, lt(serpResult.createdAt, cutoff))
 }
 
 /**
