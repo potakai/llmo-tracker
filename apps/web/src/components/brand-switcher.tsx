@@ -1,0 +1,90 @@
+'use client'
+
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useEffect, useRef } from 'react'
+
+type BrandOption = { id: string; name: string }
+
+type BrandSwitcherProps = {
+  brands: BrandOption[]
+  /** デモの組織では「ブランドを追加」を出さない（追加は 403 になる） */
+  canAddBrand: boolean
+}
+
+/**
+ * ヘッダーのブランド切り替え。今のブランド名を押すと、組織のブランドの一覧と「ブランドを追加」が開く。
+ * 開いたブランドは proxy.ts が「最後に見たブランド」として Cookie に覚える（/app でそこへ移動する）
+ */
+export function BrandSwitcher({ brands, canAddBrand }: BrandSwitcherProps) {
+  const params = useParams<{ brandId?: string }>()
+  const brandId = params.brandId
+  const current = brands.find((b) => b.id === brandId)
+  const menu = useRef<HTMLDetailsElement>(null)
+  useCloseOnOutsideClick(menu)
+
+  const close = () => {
+    if (menu.current) menu.current.open = false
+  }
+
+  return (
+    <details ref={menu} className="relative">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[var(--radius-box)] border border-rule px-3 py-1.5 text-sm hover:bg-paper">
+        <span className="sr-only">ブランドを切り替える。今のブランド：</span>
+        <span className="max-w-48 truncate font-bold">{current?.name ?? 'ブランドを選ぶ'}</span>
+        <span aria-hidden="true" className="text-ink-soft">
+          ▾
+        </span>
+      </summary>
+      <div className="absolute left-0 z-10 mt-1 w-64 rounded-[var(--radius-box)] border border-rule bg-surface py-1 shadow-lg">
+        <ul aria-label="ブランドの一覧">
+          {brands.map((b) => (
+            <li key={b.id}>
+              <Link
+                href={`/app/brands/${b.id}`}
+                onClick={close}
+                aria-current={b.id === current?.id ? 'page' : undefined}
+                className="flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-paper aria-[current=page]:font-bold"
+              >
+                <span className="truncate">{b.name}</span>
+                {b.id === current?.id && <span aria-hidden="true">✓</span>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {canAddBrand && (
+          <Link
+            href="/app/brands/new"
+            onClick={close}
+            className="block border-t border-rule px-3 py-2 text-sm text-ink-soft hover:bg-paper hover:text-ink"
+          >
+            ＋ ブランドを追加
+          </Link>
+        )}
+      </div>
+    </details>
+  )
+}
+
+/** メニューの外を押すか Esc で閉じる */
+function useCloseOnOutsideClick(menu: React.RefObject<HTMLDetailsElement | null>) {
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const el = menu.current
+      if (el?.open && !el.contains(event.target as Node)) el.open = false
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const el = menu.current
+      if (event.key === 'Escape' && el?.open) {
+        el.open = false
+        el.querySelector('summary')?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menu])
+}

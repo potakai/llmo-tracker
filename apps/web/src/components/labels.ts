@@ -10,6 +10,12 @@ export const RUN_STATUS_LABEL = {
   succeeded: '完了',
   partial: '一部失敗',
   failed: '失敗',
+  cancelled: '取り消し',
+} as const
+
+/** run を取り消した理由（run.cancelReason） */
+export const RUN_CANCEL_REASON_LABEL = {
+  schedule_disabled: '自動計測がオフになっていたため、計測せずに取り消しました',
 } as const
 
 export const percent = (value: number | null | undefined, digits = 0) =>

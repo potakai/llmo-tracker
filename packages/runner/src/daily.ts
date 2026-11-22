@@ -6,6 +6,7 @@ import {
   run as runTable,
 } from '@llmo/db'
 import { and, eq, exists, isNull } from 'drizzle-orm'
+import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { createScheduledRun } from './create-run'
 
 /** organization.metadata に `{"demo":true}` が入っている組織はデモ（閲覧専用） */
@@ -28,10 +29,13 @@ export type DailyRunsResult = {
    * 前回 run を作ったあと、ジョブに渡す前に落ちていた分もここで拾い直す
    */
   toDispatch: string[]
+  /** 拾い直す前にブランドの自動計測がオフになっていたので、配信せずに取り消した run */
+  cancelled: string[]
 }
 
 /**
  * 毎日の自動実行：有効な質問が 1 つ以上あるブランドごとに、その日の run を作る。
+ * - 自動計測をオフにしたブランド（schedule_enabled = false）は対象外。手動の計測はオフでもできる
  * - デモ組織は対象外（閲覧専用で、計測すると費用がかかるため）
  * - 何度呼んでも、1 ブランド 1 日 1 つ（DB の一意制約）。ジョブがリトライされても重複しない
  */
@@ -41,16 +45,19 @@ export async function createDailyRuns(db: Db, date: string): Promise<DailyRunsRe
     .from(brandTable)
     .innerJoin(organization, eq(organization.id, brandTable.organizationId))
     .where(
-      exists(
-        db
-          .select({ one: promptTable.id })
-          .from(promptTable)
-          .where(and(eq(promptTable.brandId, brandTable.id), isNull(promptTable.archivedAt))),
+      and(
+        eq(brandTable.scheduleEnabled, true),
+        exists(
+          db
+            .select({ one: promptTable.id })
+            .from(promptTable)
+            .where(and(eq(promptTable.brandId, brandTable.id), isNull(promptTable.archivedAt))),
+        ),
       ),
     )
     .orderBy(brandTable.createdAt)
 
-  const result: DailyRunsResult = { created: [], skipped: 0, toDispatch: [] }
+  const result: DailyRunsResult = { created: [], skipped: 0, toDispatch: [], cancelled: [] }
   for (const b of brands) {
     if (isDemoMetadata(b.metadata)) continue
     const created = await createScheduledRun(db, b.id, date)
@@ -58,6 +65,8 @@ export async function createDailyRuns(db: Db, date: string): Promise<DailyRunsRe
     else result.skipped += 1
   }
 
+  // 拾い直す前に自動計測がオフにされた分は、配信せずに取り消す（届いても executeRun が取り消すが、先に枠を空ける）
+  result.cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.scheduledFor, date))
   const queued = await db
     .select({ id: runTable.id })
     .from(runTable)

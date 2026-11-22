@@ -1,4 +1,5 @@
 import {
+  brand as brandTable,
   citation,
   type Db,
   type Provider,
@@ -16,8 +17,9 @@ import {
   type ProviderId,
   type Providers,
 } from '@llmo/llm'
-import { and, eq, gte, isNull, notLike, or, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, notLike, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
+import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
 // DB の provider enum と LLM 側の ProviderId がずれたらここで型エラーになる
@@ -49,7 +51,7 @@ export type ExecuteRunDeps = {
 
 export type RunSummary = {
   runId: string
-  status: 'succeeded' | 'partial' | 'failed'
+  status: 'succeeded' | 'partial' | 'failed' | 'cancelled'
   total: number
   succeeded: number
   failed: number
@@ -63,7 +65,7 @@ type Task = {
   sampleIndex: number
 }
 
-const FINISHED = new Set(['succeeded', 'partial', 'failed'])
+const FINISHED = new Set(['succeeded', 'partial', 'failed', 'cancelled'])
 
 /** run がない（ブランドごと消された など）。ジョブはリトライしても意味がないので、すぐ諦める */
 export class RunNotFoundError extends Error {
@@ -133,14 +135,23 @@ export async function executeRunSlice(
     },
   })
   if (!target) throw new RunNotFoundError(runId)
-  if (FINISHED.has(target.status)) return { done: true, summary: await summarize(db, runId) }
+  // 終わっている run（取り消した run を含む）なら何もしない
+  if (FINISHED.has(target.status)) {
+    return { done: true, summary: await summarizeFinished(db, runId, target.status) }
+  }
   const { providers, extractor } =
     'llmFor' in deps ? deps.llmFor(target.brand.organizationId) : deps
 
-  await db
-    .update(runTable)
-    .set({ status: 'running', startedAt: sql`coalesce(${runTable.startedAt}, now())` })
-    .where(eq(runTable.id, runId))
+  if (!(await startRun(db, runId))) {
+    // 開始できなかった。自動計測がオフのブランドの queued の自動 run なら、実行せずに取り消す。
+    // 朝のジョブの配信ステップだけが再試行されると、オフにする前に作った自動 run が届くため
+    const cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.id, runId))
+    if (cancelled.length > 0) {
+      return { done: true, summary: await summarizeFinished(db, runId, 'cancelled') }
+    }
+    // 読んだあとに終わった・取り消されたなど。読み直して、終わっていればそのまま返す
+    return executeRunSlice(deps, runId, options)
+  }
 
   const brand = target.brand
   const tasks = await pendingTasks(db, runId, brand, options.retryFailedBefore)
@@ -371,6 +382,49 @@ export function toCitations(sources: AskResult['sources'], brandDomain: string |
     })
   }
   return rows
+}
+
+/**
+ * run を running にする。開始できたら true。
+ * 確認と開始を 1 つの UPDATE で行うので、確認から開始までのあいだに自動計測がオフにされても開始しない。
+ * - queued の自動 run：ブランドの自動計測がオンのときだけ開始する
+ * - queued の手動 run：オフでも開始する（「今すぐ計測」はオフでも使える）
+ * - running の run：区切って続きから再開する分。途中でオフにされても最後まで実行する
+ * - 終わった run（取り消しを含む）：開始しない（取り消した run を running に戻さない）
+ */
+export async function startRun(db: Db, runId: string): Promise<boolean> {
+  const [started] = await db
+    .update(runTable)
+    .set({ status: 'running', startedAt: sql`coalesce(${runTable.startedAt}, now())` })
+    .where(
+      and(
+        eq(runTable.id, runId),
+        or(
+          eq(runTable.status, 'running'),
+          and(
+            eq(runTable.status, 'queued'),
+            or(
+              eq(runTable.trigger, 'manual'),
+              inArray(
+                runTable.brandId,
+                db
+                  .select({ id: brandTable.id })
+                  .from(brandTable)
+                  .where(eq(brandTable.scheduleEnabled, true)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: runTable.id })
+  return started !== undefined
+}
+
+/** 終わっている run の集計。取り消した run は、回答の数から決めずに cancelled のまま返す */
+async function summarizeFinished(db: Db, runId: string, status: string): Promise<RunSummary> {
+  const summary = await summarize(db, runId)
+  return status === 'cancelled' ? { ...summary, status: 'cancelled' } : summary
 }
 
 async function summarize(db: Db, runId: string): Promise<RunSummary> {

@@ -85,6 +85,8 @@ export const dailyRunsFunction = inngest.createFunction(
       created: result.created.length,
       skipped: result.skipped,
       dispatched: result.toDispatch.length,
+      // 拾い直す前に自動計測がオフにされていて、配信せずに取り消した run
+      cancelled: result.cancelled.length,
     }
     logger.info('今日の run を作りました', summary)
     return summary

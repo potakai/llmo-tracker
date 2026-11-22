@@ -17,6 +17,7 @@ export async function listRuns(organizationId: string, brandId: string, limit = 
       scheduledFor: run.scheduledFor,
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
+      cancelReason: run.cancelReason,
       totalCostUsd: run.totalCostUsd,
       createdAt: run.createdAt,
       succeeded: sql<number>`count(${response.id}) filter (where ${response.status} = 'succeeded')::int`,

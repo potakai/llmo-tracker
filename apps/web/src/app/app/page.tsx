@@ -1,17 +1,13 @@
-import { brand } from '@llmo/db'
-import { asc, eq } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db'
+import { CURRENT_BRAND_COOKIE } from '@/server/current-brand'
+import { resolveHomeBrandId } from '@/server/queries/brands'
 import { requireViewerWithOrg } from '@/server/viewer'
 
-/** /app に来たら、最初のブランドの画面へ。ブランドがなければ初期設定へ */
+/** /app に来たら、最後に見たブランド（なければ最初のブランド）の画面へ。ブランドがなければ初期設定へ */
 export default async function AppHome() {
   const { organizationId } = await requireViewerWithOrg()
-  const [first] = await db
-    .select({ id: brand.id })
-    .from(brand)
-    .where(eq(brand.organizationId, organizationId))
-    .orderBy(asc(brand.createdAt))
-    .limit(1)
-  redirect(first ? `/app/brands/${first.id}` : '/onboarding')
+  const remembered = (await cookies()).get(CURRENT_BRAND_COOKIE)?.value
+  const brandId = await resolveHomeBrandId(organizationId, remembered)
+  redirect(brandId ? `/app/brands/${brandId}` : '/onboarding')
 }
