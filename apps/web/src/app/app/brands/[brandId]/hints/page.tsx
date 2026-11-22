@@ -64,8 +64,7 @@ function WaitingMessage({ hints, brandId }: { hints: WaitingResult; brandId: str
     case 'scheduleOff':
       return (
         <>
-          毎日の自動計測がオフになっているため、回答が増えません。{settings}
-          で「毎日自動で計測する」をオンにしてください。
+          毎日の自動計測がオフになっているため、自動では回答が増えません。計測結果のタブの「今すぐ計測」で、手動で増やせます。
         </>
       )
     case 'noActivePrompts':

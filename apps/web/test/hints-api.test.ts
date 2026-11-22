@@ -143,6 +143,8 @@ describe('施策のもとにする回答の集め方', () => {
     expect(rows).toHaveLength(60)
     const competitorIds = brand.competitors.map((c: { id: string }) => c.id)
     for (const row of rows) {
+      // 手動の計測なので、計測した日（日本時間の今日）
+      expect(row.date).toBe(todayInTokyo())
       expect(row.isPromptActive).toBe(true)
       expect(brand.prompts.map((p: { id: string }) => p.id)).toContain(row.promptId)
       for (const id of row.competitorIds) expect(competitorIds).toContain(id)

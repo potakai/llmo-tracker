@@ -78,17 +78,22 @@ function promptText(hint: PromptHint): HintText {
         で出ました。
       </>
     ),
-    why: 'この聞き方で調べた人が目にする回答に、御社の名前が入っていないことが多い状態です。',
+    why: `この質問への今回の計測の回答では、御社の名前が出た割合は${top}より低めでした。`,
     next: 'このテーマを扱うページ（選び方の解説や、よくある質問など）を、御社のサイトに用意することを検討できます。',
     evidenceLabel: 'この質問への回答を見る',
   }
 }
 
-const OPEN_WHOLE_ANSWER = '下の「回答を見る」から、回答全体を確かめてください。'
+/** 抜き出した箇所は手がかりにすぎないので、判断は回答全体を見てもらう */
+const JUDGE_WHOLE_ANSWER =
+  '否定的かどうかの最終的な判断は、下の「回答を見る」から回答全体を見て行ってください。'
 
 function NegativePassages({ hint }: { hint: NegativeHint }) {
   return (
     <span className="mt-2 flex flex-col gap-2">
+      <span className="block text-sm font-bold text-ink-soft">
+        確認の手がかり（言い回しから自動で抜き出した箇所です）
+      </span>
       {hint.passages.map((p) => (
         <span key={p.focus} className="block border-l-4 border-danger/60 bg-paper px-3 py-2">
           {p.before && <span className="block text-sm text-ink-soft">{p.before}</span>}
@@ -103,18 +108,19 @@ function NegativePassages({ hint }: { hint: NegativeHint }) {
 function negativeText(hint: NegativeHint): HintText {
   const unlocated =
     hint.passages.length === 0
-      ? `どこが否定的かは、自動では特定できませんでした。${OPEN_WHOLE_ANSWER}`
+      ? '確認の手がかりになる箇所は、自動では抜き出せませんでした。'
       : hint.unlocatedResponses > 0
-        ? `ほかの ${hint.unlocatedResponses} 件は、どこが否定的かを自動では特定できませんでした。${OPEN_WHOLE_ANSWER}`
+        ? `ほかの ${hint.unlocatedResponses} 件は、確認の手がかりになる箇所を自動では抜き出せませんでした。`
         : null
   return {
-    title: 'AI が御社について、否定的に書いている回答があります',
+    title: '否定的と判定された回答があります',
     now: (
       <>
         今回の計測では、御社の名前が出た回答のうち <Num>{hint.negativeResponses} 件</Num>
         が、否定的な書き方と判定されました。
         {hint.passages.length > 0 && <NegativePassages hint={hint} />}
         {unlocated && <span className="mt-2 block">{unlocated}</span>}
+        <span className="mt-2 block">{JUDGE_WHOLE_ANSWER}</span>
       </>
     ),
     why: 'AI の書き方は、そのまま読んだ人の印象につながります。',
@@ -133,7 +139,7 @@ function ownSiteText(hint: OwnSiteHint): HintText {
         {hint.topDomain} は {percent(hint.topRate)}）。
       </>
     ),
-    why: 'AI は、参考元のサイトの内容をもとに回答を書いています。',
+    why: '今回の計測では、参考元として表示されたのは、主に御社以外のサイトでした。',
     next: '料金・特長・よくある質問など、回答に使われやすい情報を、御社のサイトの分かりやすい場所に書くことを検討できます。',
     evidenceLabel: '参考元として表示されたサイトを見る',
   }

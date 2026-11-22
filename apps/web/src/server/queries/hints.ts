@@ -53,6 +53,7 @@ export async function loadHintResponses(
         id: response.id,
         promptId: response.promptId,
         promptText: prompt.text,
+        date: runDate,
         isPromptActive: sql<boolean>`${prompt.archivedAt} is null`,
         brandMentioned: sql<boolean>`coalesce(${analysis.brandMentioned}, false)`,
         sentiment: analysis.sentiment,
@@ -151,6 +152,7 @@ export async function getBrandHints(
     competitors: brand.competitors.map((c) => ({ id: c.id, name: c.name, domain: c.domain })),
     responses,
     collection: collectionSettings(brand),
+    today,
   })
   const evidenceIds =
     hints.status === 'ready'

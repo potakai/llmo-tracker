@@ -3,6 +3,7 @@
  * DB には触らない（集めた回答を渡すと、施策の一覧を返す）。しきい値と優先度の計算はここに集める。
  */
 import { findNegativePassage, type NegativePassage } from './hint-quotes'
+import { addDays } from './stats'
 
 /** 何日分の回答から見つけるか */
 export const HINT_WINDOW_DAYS = 14
@@ -37,6 +38,8 @@ export type HintResponse = {
   id: string
   promptId: string
   promptText: string
+  /** いつの計測か（'YYYY-MM-DD'、日本時間） */
+  date: string
   /** アーカイブされていない（今も計測している）質問か */
   isPromptActive: boolean
   brandMentioned: boolean
@@ -54,6 +57,8 @@ export type HintInput = {
   competitors: { id: string; name: string; domain: string | null }[]
   responses: HintResponse[]
   collection: CollectionSettings
+  /** 今日（'YYYY-MM-DD'、日本時間）。古い回答が範囲から抜けていく日を数えるのに使う */
+  today: string
 }
 
 /** 今の計測の設定（あと何日でデータが集まるかの見積もりに使う） */
@@ -371,16 +376,24 @@ function pickTop(candidates: Hint[], limit: number): Hint[] {
 
 /**
  * 今の計測の設定で、直近 HINT_WINDOW_DAYS 日の範囲に MIN_RESPONSES 件が集まるまでの日数を見積もる。
- * 古い回答は範囲から外れていくので、届くかどうかは「1 日の件数 × 日数」で決まる
+ * 毎日 responsesPerDay 件ずつ増え、古い回答は日ごとに範囲から抜けていくとして、1 日ずつ数え直す。
+ * HINT_WINDOW_DAYS 日たつと範囲は新しい回答だけになるので、それでも届かなければ unreachable
  */
-export function estimateWait(responses: number, collection: CollectionSettings): WaitEstimate {
+export function estimateWait(
+  dates: string[],
+  collection: CollectionSettings,
+  today: string,
+): WaitEstimate {
   if (collection.activePrompts === 0) return { kind: 'noActivePrompts' }
   if (!collection.scheduleEnabled || collection.responsesPerDay <= 0) return { kind: 'scheduleOff' }
   const perDay = collection.responsesPerDay
-  if (perDay * HINT_WINDOW_DAYS < MIN_RESPONSES) {
-    return { kind: 'unreachable', responsesPerDay: perDay }
+  for (let day = 1; day <= HINT_WINDOW_DAYS; day++) {
+    // day 日後の範囲の最初の日
+    const since = addDays(today, day - (HINT_WINDOW_DAYS - 1))
+    const remaining = dates.filter((date) => date >= since).length
+    if (remaining + perDay * day >= MIN_RESPONSES) return { kind: 'days', daysLeft: day }
   }
-  return { kind: 'days', daysLeft: Math.ceil((MIN_RESPONSES - responses) / perDay) }
+  return { kind: 'unreachable', responsesPerDay: perDay }
 }
 
 export function buildHints(input: HintInput): HintsResult {
@@ -390,7 +403,11 @@ export function buildHints(input: HintInput): HintsResult {
       status: 'waiting',
       responses: total,
       needed: MIN_RESPONSES,
-      estimate: estimateWait(total, input.collection),
+      estimate: estimateWait(
+        input.responses.map((r) => r.date),
+        input.collection,
+        input.today,
+      ),
     }
   }
   const setup = findOwnSiteSetupHint(input)

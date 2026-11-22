@@ -13,9 +13,13 @@ import {
   MIN_SITE_CITATIONS,
   OWN_SITE_RARE_RATE,
 } from '@/lib/hints'
+import { addDays } from '@/lib/stats'
 
 const RIVAL_A = { id: 'c-a', name: 'ミライ会計', domain: 'mirai.example' }
 const RIVAL_B = { id: 'c-b', name: 'ラクラク帳簿', domain: null }
+
+/** テストの「今日」。回答の日付は、指定しなければ今日 */
+const TODAY = '2026-11-22'
 
 let seq = 0
 /** 回答 1 件。何も指定しなければ「質問 p1・自社も競合も出てこない・引用なし」 */
@@ -25,6 +29,7 @@ function answer(overrides: Partial<HintResponse> = {}): HintResponse {
     id: `r-${seq}`,
     promptId: 'p1',
     promptText: 'おすすめの会計ソフトは？',
+    date: TODAY,
     isPromptActive: true,
     brandMentioned: false,
     sentiment: null,
@@ -45,6 +50,7 @@ function input(responses: HintResponse[], overrides: Partial<HintInput> = {}): H
     competitors: [RIVAL_A, RIVAL_B],
     responses,
     collection: { scheduleEnabled: true, activePrompts: 2, responsesPerDay: 20 },
+    today: TODAY,
     ...overrides,
   }
 }
@@ -104,6 +110,23 @@ describe('データが少ないとき', () => {
     // 1 日 4 件、いま 40 件 → あと 10 件 → 3 日
     expect(buildHints(input(times(40), collection(4)))).toMatchObject({
       estimate: { kind: 'days', daysLeft: 3 },
+    })
+  })
+
+  it(`古い回答が日ごとに ${HINT_WINDOW_DAYS} 日の範囲から抜けていくことも数える（${MIN_RESPONSES - 1} 件がすべて最古の日・1 日 4 件）`, () => {
+    // 1 日後に最古の日の 49 件が抜けるので、新しい回答だけで 50 件に届く 13 日後（52 件）
+    const oldest = addDays(TODAY, -(HINT_WINDOW_DAYS - 1))
+    const result = buildHints(input(times(MIN_RESPONSES - 1, { date: oldest }), collection(4)))
+    expect(result).toMatchObject({ estimate: { kind: 'days', daysLeft: 13 } })
+  })
+
+  it('抜けていく回答があっても、残る回答と新しい回答で先に届けば、その日を返す', () => {
+    // 最古の日に 10 件・今日に 30 件、1 日 10 件
+    // 1 日後：30 + 10 = 40、2 日後：30 + 20 = 50 → 2 日
+    const oldest = addDays(TODAY, -(HINT_WINDOW_DAYS - 1))
+    const responses = [...times(10, { date: oldest }), ...times(30)]
+    expect(buildHints(input(responses, collection(10)))).toMatchObject({
+      estimate: { kind: 'days', daysLeft: 2 },
     })
   })
 

@@ -120,7 +120,7 @@ test.describe('デモアカウントでログイン済み', () => {
       page.getByRole('heading', { name: /への回答に、御社の名前が/ }).first(),
     ).toBeVisible()
     await expect(
-      page.getByRole('heading', { name: /御社について、否定的に書いている回答があります/ }),
+      page.getByRole('heading', { name: /否定的と判定された回答があります/ }),
     ).toBeVisible()
     await expect(
       page.getByRole('heading', { name: /参考元として表示される回答が少なめです/ }),
@@ -129,15 +129,27 @@ test.describe('デモアカウントでログイン済み', () => {
     // 質問文そのものに「おすすめ」が入ることはあるので、言い回しで確かめる）
     await expect(hints.getByText(/すすめられ/)).toHaveCount(0)
     // 否定的な箇所を、前後の文とあわせて見せる
-    const negative = hints.filter({ hasText: '否定的に書いている回答があります' })
+    const negative = hints.filter({ hasText: '否定的と判定された回答があります' })
     await expect(
       negative.getByText('サンプル会計：サポートの返信が遅いという声もあります。', { exact: true }),
     ).toBeVisible()
-    // 否定的な箇所を特定できなかった回答は、回答全体を見るように案内する
+    // 抜き出した箇所は「確認の手がかり」と明示し、判断は回答全体を見るように案内する
+    await expect(negative.getByText(/^確認の手がかり/)).toBeVisible()
     await expect(
-      negative.getByText(
-        /件は、どこが否定的かを自動では特定できませんでした。.*回答全体を確かめてください/,
-      ),
+      negative.getByText(/件は、確認の手がかりになる箇所を自動では抜き出せませんでした/),
+    ).toBeVisible()
+    await expect(
+      negative.getByText(/最終的な判断は、下の「回答を見る」から回答全体を見て行ってください/),
+    ).toBeVisible()
+    // 質問のカードは、今回の計測で名前が出た割合を比べた事実として書く
+    await expect(
+      hints
+        .getByText(/この質問への今回の計測の回答では、御社の名前が出た割合は.+より低めでした/)
+        .first(),
+    ).toBeVisible()
+    // 自社サイトのカードは「参考元として表示された」という観測だけを書く
+    await expect(
+      hints.getByText('今回の計測では、参考元として表示されたのは、主に御社以外のサイトでした。'),
     ).toBeVisible()
     // 自社サイトの割合は、何のうちの割合かを書く
     await expect(hints.getByText(/今回の計測で参考元が表示された回答 \d+ 件のうち/)).toBeVisible()
@@ -264,5 +276,7 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await page.getByRole('button', { name: '設定を保存' }).click()
   await expect(page.getByText('保存しました')).toBeVisible()
   await page.getByRole('link', { name: '改善のヒント' }).click()
-  await expect(page.getByText(/毎日の自動計測がオフになっているため/)).toBeVisible()
+  await expect(
+    page.getByText(/自動では回答が増えません。.*「今すぐ計測」で、手動で増やせます/),
+  ).toBeVisible()
 })
