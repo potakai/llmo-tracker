@@ -76,6 +76,25 @@ describe('createLatestOnlySaver', () => {
     expect(server.calls).toEqual([])
   })
 
+  it('保存済みのものを頼んだあとでも、別のものを頼むと送る（ページを開いた直後に、覚えているブランドを開いた場合）', async () => {
+    const server = controllableSave()
+    const saver = createLatestOnlySaver(server.save, 'A')
+    await saver.request('A')
+
+    const next = saver.request('B')
+    expect(server.calls).toEqual(['B'])
+    await server.respond(0)
+    await next
+    expect(saver.saved()).toBe('B')
+
+    // 保存が終わったあとも、また頼めば送る
+    const back = saver.request('A')
+    expect(server.calls).toEqual(['B', 'A'])
+    await server.respond(0)
+    await back
+    expect(server.stored).toBe('A')
+  })
+
   it('失敗した（res.ok でない）ときは保存できていないものとして扱い、同じものをまた頼むと送り直す', async () => {
     const server = controllableSave()
     const saver = createLatestOnlySaver(server.save, 'A')

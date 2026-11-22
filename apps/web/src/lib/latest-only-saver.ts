@@ -31,21 +31,30 @@ export function createLatestOnlySaver(
     }
   }
 
+  /** 頼まれた値を送り切るまで、1 つずつ送る。送るものがあるときだけ呼ぶ（最初の保存で必ず待つ） */
   async function drain() {
-    while (wanted !== null && wanted !== saved) {
-      const value = wanted
-      const ok = await trySave(value)
-      saved = ok ? value : null
-      // 失敗して、そのあいだに新しく頼まれていなければ、ここで止める
-      if (!ok && wanted === value) break
+    try {
+      while (wanted !== null && wanted !== saved) {
+        const value = wanted
+        const ok = await trySave(value)
+        saved = ok ? value : null
+        // 失敗して、そのあいだに新しく頼まれていなければ、ここで止める
+        if (!ok && wanted === value) break
+      }
+    } finally {
+      // ループを抜けたのと同じタイミングで空ける（このあとに頼まれた分は、次の drain が送る）
+      running = null
     }
-    running = null
   }
 
   return {
     request(value) {
       wanted = value
-      running ??= drain()
+      if (running) return running
+      // 送るものがないのに drain を呼ぶと、待たずに終わって running に終わった Promise が残り、
+      // それ以降の依頼を受け付けなくなる
+      if (wanted === saved) return Promise.resolve()
+      running = drain()
       return running
     },
     saved: () => saved,
