@@ -3,6 +3,7 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
+import { rememberBrand } from '../current-brand'
 import { errors } from '../errors'
 import { getBrandMetrics } from '../queries/metrics'
 import { brandParams, createBrandInput, metricsQuery } from '../schemas/brand'
@@ -35,7 +36,7 @@ export const brandRoutes = new Hono<OrgEnv>()
     return c.json({ brands: rows })
   })
 
-  // ブランドを登録（競合と質問も一緒に。全部入るか、全部入らないか）
+  // ブランドを登録（競合と質問も一緒に。全部入るか、全部入らないか）。初期設定と、2 社目以降の追加で使う
   .post('/', validate('json', createBrandInput), async (c) => {
     const input = c.req.valid('json')
     const organizationId = c.var.organizationId
@@ -64,10 +65,14 @@ export const brandRoutes = new Hono<OrgEnv>()
           })),
         )
       }
-      await tx.insert(prompt).values(input.prompts.map((text) => ({ brandId: created.id, text })))
+      await tx
+        .insert(prompt)
+        .values(input.prompts.map(({ text, kind }) => ({ brandId: created.id, text, kind })))
       return created.id
     })
 
+    // 追加したブランドを今のブランドにする（/app で開くと、このブランドの画面になる）
+    rememberBrand(c, brandId)
     return c.json({ brand: await findBrandInOrg(organizationId, brandId) }, 201)
   })
 

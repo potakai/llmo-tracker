@@ -30,6 +30,7 @@ export {
   GEMINI_FREE_SEARCHES_PER_MONTH,
   hasFreeSearchTier,
   pricingModelName,
+  typicalAnswerCostUsd,
 } from './pricing'
 export {
   createFakeProvider,

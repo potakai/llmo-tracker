@@ -1,4 +1,4 @@
-import { organization, prompt, run } from '@llmo/db'
+import { brand as brandTable, organization, prompt, run } from '@llmo/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { createDailyRuns, createManualRun, isDemoMetadata, tokyoDate } from '../src'
@@ -29,6 +29,27 @@ describe('createDailyRuns', () => {
     await db.update(prompt).set({ archivedAt: new Date() }).where(eq(prompt.brandId, brand.id))
 
     expect(await createdBrandIds(nextDate())).not.toContain(brand.id)
+  })
+
+  it('自動計測をオフにしたブランドは対象外。オンに戻すとまた作る', async () => {
+    const { brand } = await seedBrand()
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+
+    const date = nextDate()
+    const result = await createDailyRuns(db, date)
+    expect(result.created.map((c) => c.brandId)).not.toContain(brand.id)
+    expect(await db.select().from(run).where(eq(run.brandId, brand.id))).toHaveLength(0)
+
+    await db.update(brandTable).set({ scheduleEnabled: true }).where(eq(brandTable.id, brand.id))
+    expect(await createdBrandIds(date)).toContain(brand.id)
+  })
+
+  it('自動計測をオフにしても、手動の計測はできる', async () => {
+    const { brand } = await seedBrand()
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+
+    const manual = await createManualRun(db, brand.id)
+    expect(manual).toMatchObject({ brandId: brand.id, trigger: 'manual', status: 'queued' })
   })
 
   it('デモ組織のブランドは対象外（計測すると費用がかかる）', async () => {

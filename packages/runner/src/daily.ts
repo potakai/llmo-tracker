@@ -32,6 +32,7 @@ export type DailyRunsResult = {
 
 /**
  * 毎日の自動実行：有効な質問が 1 つ以上あるブランドごとに、その日の run を作る。
+ * - 自動計測をオフにしたブランド（schedule_enabled = false）は対象外。手動の計測はオフでもできる
  * - デモ組織は対象外（閲覧専用で、計測すると費用がかかるため）
  * - 何度呼んでも、1 ブランド 1 日 1 つ（DB の一意制約）。ジョブがリトライされても重複しない
  */
@@ -41,11 +42,14 @@ export async function createDailyRuns(db: Db, date: string): Promise<DailyRunsRe
     .from(brandTable)
     .innerJoin(organization, eq(organization.id, brandTable.organizationId))
     .where(
-      exists(
-        db
-          .select({ one: promptTable.id })
-          .from(promptTable)
-          .where(and(eq(promptTable.brandId, brandTable.id), isNull(promptTable.archivedAt))),
+      and(
+        eq(brandTable.scheduleEnabled, true),
+        exists(
+          db
+            .select({ one: promptTable.id })
+            .from(promptTable)
+            .where(and(eq(promptTable.brandId, brandTable.id), isNull(promptTable.archivedAt))),
+        ),
       ),
     )
     .orderBy(brandTable.createdAt)

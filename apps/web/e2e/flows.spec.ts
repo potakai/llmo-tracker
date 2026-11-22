@@ -47,7 +47,7 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await page.getByLabel(/組織の名前/).fill('E2E 株式会社')
   await page.getByRole('button', { name: '次へ' }).click()
 
-  await page.getByLabel('自社のブランド名').fill('E2E会計')
+  await page.getByLabel('ブランド名', { exact: true }).fill('E2E会計')
   await page.getByLabel(/競合/).fill('ミライ会計\nラクラク帳簿')
   // 11 個はエラーになる
   await page
@@ -92,6 +92,13 @@ test.describe('デモアカウントでログイン済み', () => {
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
+
+    // ブランドの切り替えは見られるが、追加はできない
+    await page.locator('summary', { hasText: 'ブランドを切り替える' }).click()
+    await expect(page.getByRole('list', { name: 'ブランドの一覧' })).toBeVisible()
+    await expect(page.getByRole('link', { name: '＋ ブランドを追加' })).toHaveCount(0)
+    await page.goto('/app/brands/new')
+    await expect(page.getByText('デモアカウントでは、ブランドを追加できません。')).toBeVisible()
   })
 
   test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
@@ -128,7 +135,7 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await page.getByRole('button', { name: 'アカウントを作成' }).click()
   await page.getByLabel(/組織の名前/).fill('設定テスト株式会社')
   await page.getByRole('button', { name: '次へ' }).click()
-  await page.getByLabel('自社のブランド名').fill('設定会計')
+  await page.getByLabel('ブランド名', { exact: true }).fill('設定会計')
   await page.getByLabel(/競合/).fill('競合A')
   await page.getByLabel(/AI に聞く質問/).fill('質問その1')
   await page.getByRole('button', { name: '登録して計測画面へ' }).click()
@@ -181,4 +188,53 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await expect(page.getByText('保存しました')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('1 回の計測で同じ質問を聞く回数')).toHaveValue('3')
+})
+
+test('ブランドを追加して、ヘッダーから切り替えられる。/app では最後に見たブランドが開く', async ({
+  page,
+}) => {
+  await page.goto('/signup')
+  await page.getByLabel('お名前').fill('代理店テスト')
+  await page.getByLabel('メールアドレス').fill(`agency-${Date.now()}@example.com`)
+  await page.getByLabel(/パスワード/).fill('password-1234')
+  await page.getByRole('button', { name: 'アカウントを作成' }).click()
+  await page.getByLabel(/組織の名前/).fill('代理店株式会社')
+  await page.getByRole('button', { name: '次へ' }).click()
+  await page.getByLabel('ブランド名', { exact: true }).fill('クライアントA')
+  await page.getByLabel(/AI に聞く質問/).fill('おすすめの会計ソフトは？')
+  await page.getByRole('button', { name: '登録して計測画面へ' }).click()
+  await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
+
+  // ヘッダーのブランド名から「ブランドを追加」へ
+  const switcher = page.locator('summary', { hasText: 'ブランドを切り替える' })
+  await switcher.click()
+  await page.getByRole('link', { name: '＋ ブランドを追加' }).click()
+  await expect(page).toHaveURL(/\/app\/brands\/new$/)
+  await page.getByLabel('ブランド名', { exact: true }).fill('クライアントB')
+  await page.getByLabel(/別の呼び方/).fill('Client B')
+  await page.getByLabel(/AI に聞く質問/).fill('おすすめの経費精算アプリは？')
+  await page.getByLabel(/検索キーワード/).fill('経費精算 比較')
+  await page.getByRole('button', { name: '追加して計測画面へ' }).click()
+  await expect(page.getByRole('heading', { name: 'クライアントB' })).toBeVisible()
+
+  // 入力した質問とキーワードが、種類つきで登録されている
+  await page.getByRole('link', { name: '設定' }).click()
+  await expect(page.getByLabel('「経費精算 比較」の種類')).toHaveValue('keyword')
+  await expect(page.getByLabel('「おすすめの経費精算アプリは？」の種類')).toHaveValue('question')
+
+  // ヘッダーから 1 社目に切り替える
+  await switcher.click()
+  const remembered = page.waitForResponse(
+    (res) => res.request().method() === 'PUT' && res.url().endsWith('/api/current-brand'),
+  )
+  await page
+    .getByRole('list', { name: 'ブランドの一覧' })
+    .getByRole('link', { name: 'クライアントA' })
+    .click()
+  await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
+  expect((await remembered).status()).toBe(200)
+
+  // /app に来ると、最後に見たブランドが開く
+  await page.goto('/app')
+  await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
 })

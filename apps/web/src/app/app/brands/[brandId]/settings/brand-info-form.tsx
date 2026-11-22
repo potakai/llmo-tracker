@@ -1,7 +1,10 @@
 'use client'
 
 import { type FormEvent, useState } from 'react'
+import { DailyCostEstimate } from '@/components/daily-cost-estimate'
+import type { ProviderKey } from '@/components/labels'
 import { api } from '@/lib/api-client'
+import { splitList } from '@/lib/form-lists'
 import { useAction } from '@/lib/use-action'
 
 type Brand = {
@@ -14,10 +17,37 @@ type Brand = {
   scheduleEnabled: boolean
 }
 
+type BrandInfoFormProps = {
+  brand: Brand
+  readOnly: boolean
+  /** 有効な質問の数（費用の目安に使う） */
+  activePromptCount: number
+  /** 本物の AI で計測する組織なら、1 回答あたりの費用の目安。あれば毎朝の費用の目安を出す */
+  perAnswerUsd?: Record<ProviderKey, number | null>
+}
+
+/** フォームの今の入力から、費用の目安に使う値を読む（保存する前から目安が変わるように） */
+function readDraft(form: HTMLFormElement) {
+  const data = new FormData(form)
+  return {
+    samplesPerPrompt: Number(data.get('samples')),
+    providers: data.getAll('providers').map(String) as Brand['providers'],
+  }
+}
+
 /** ブランド名・別名・ドメイン・計測の設定 */
-export function BrandInfoForm({ brand, readOnly }: { brand: Brand; readOnly: boolean }) {
+export function BrandInfoForm({
+  brand,
+  readOnly,
+  activePromptCount,
+  perAnswerUsd,
+}: BrandInfoFormProps) {
   const { run, error, pending } = useAction()
   const [saved, setSaved] = useState(false)
+  const [draft, setDraft] = useState({
+    samplesPerPrompt: brand.samplesPerPrompt,
+    providers: brand.providers,
+  })
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -29,10 +59,7 @@ export function BrandInfoForm({ brand, readOnly }: { brand: Brand; readOnly: boo
         param: { brandId: brand.id },
         json: {
           name: String(form.get('name')),
-          aliases: String(form.get('aliases') ?? '')
-            .split(/[、,\n]/)
-            .map((s) => s.trim())
-            .filter(Boolean),
+          aliases: splitList(form.get('aliases')),
           domain: domain || null,
           samplesPerPrompt: Number(form.get('samples')),
           providers: form.getAll('providers').map(String) as Brand['providers'],
@@ -48,7 +75,14 @@ export function BrandInfoForm({ brand, readOnly }: { brand: Brand; readOnly: boo
       <h2 id="brand-settings-heading" className="text-lg font-bold">
         ブランドと計測の設定
       </h2>
-      <form onSubmit={save} className="mt-4 flex flex-col gap-5" onChange={() => setSaved(false)}>
+      <form
+        onSubmit={save}
+        className="mt-4 flex flex-col gap-5"
+        onChange={(event) => {
+          setSaved(false)
+          setDraft(readDraft(event.currentTarget))
+        }}
+      >
         <fieldset disabled={readOnly} className="flex flex-col gap-5">
           <div className="flex flex-col gap-1">
             <label htmlFor="brand-name" className="text-sm">
@@ -132,11 +166,29 @@ export function BrandInfoForm({ brand, readOnly }: { brand: Brand; readOnly: boo
               ))}
             </div>
           </fieldset>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" name="schedule" defaultChecked={brand.scheduleEnabled} />
-            毎日自動で計測する
-          </label>
+          <div className="flex flex-col gap-1">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="schedule"
+                defaultChecked={brand.scheduleEnabled}
+                aria-describedby="brand-schedule-hint"
+              />
+              毎日自動で計測する
+            </label>
+            <span id="brand-schedule-hint" className="text-xs text-ink-soft">
+              毎朝、このブランドの質問を AI に聞きます。オフにしても「今すぐ計測」は使えます
+            </span>
+          </div>
         </fieldset>
+        {perAnswerUsd && (
+          <DailyCostEstimate
+            samplesPerPrompt={draft.samplesPerPrompt}
+            promptCount={activePromptCount}
+            providers={draft.providers}
+            perAnswerUsd={perAnswerUsd}
+          />
+        )}
 
         <div className="flex items-center gap-4">
           <button type="submit" className="btn-primary" disabled={readOnly || pending}>

@@ -125,3 +125,25 @@ function billableSearchCount(
   const freeLeft = Math.max(0, freePerMonth - usedThisMonth)
   return Math.max(0, searchCount - freeLeft)
 }
+
+/**
+ * 1 回の回答で使う量の目安（毎朝の計測の費用の見積もりに使う）。
+ * 実測ではなく仮の値なので、本物の AI の計測がたまったら、回答の平均に合わせて直す。
+ * - ChatGPT：Web 検索で読んだ内容が入力のトークンとして課金されるので、入力が多い
+ * - Gemini：検索の結果は入力のトークンに入らない。1 回答で 2 回ほど検索する
+ */
+const TYPICAL_ANSWER_USAGE: Record<
+  ProviderId,
+  { inputTokens: number; outputTokens: number; searchCount: number }
+> = {
+  openai: { inputTokens: 8_000, outputTokens: 1_000, searchCount: 1 },
+  gemini: { inputTokens: 100, outputTokens: 1_500, searchCount: 2 },
+}
+
+/**
+ * 1 回答あたりの費用の目安。検索の無料枠は考えない（多めの見積もり）。
+ * 料金表にないモデルは null
+ */
+export function typicalAnswerCostUsd(key: PriceKey): number | null {
+  return estimateCostUsd({ ...key, ...TYPICAL_ANSWER_USAGE[key.provider] })
+}

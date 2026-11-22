@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { estimateCostUsd, GEMINI_FREE_SEARCHES_PER_MONTH, hasFreeSearchTier } from '../src'
+import {
+  estimateCostUsd,
+  GEMINI_FREE_SEARCHES_PER_MONTH,
+  hasFreeSearchTier,
+  typicalAnswerCostUsd,
+} from '../src'
 
 const NOV_2026 = new Date('2026-11-21T00:00:00Z')
 
@@ -127,5 +132,31 @@ describe('hasFreeSearchTier', () => {
     expect(
       hasFreeSearchTier({ provider: 'gemini', model: 'gemini-3.8-flash-2026-11-01', at: NOV_2026 }),
     ).toBe(true)
+  })
+})
+
+describe('typicalAnswerCostUsd', () => {
+  it('1 回答あたりの目安を、よくあるトークン数と検索回数で料金表から出す（無料枠は考えない）', () => {
+    // ChatGPT：入力 8,000 × $0.75/M + 出力 1,000 × $4.50/M + 検索 1 回 × $10/1k
+    expect(
+      typicalAnswerCostUsd({ provider: 'openai', model: 'gpt-5.4-mini', at: NOV_2026 }),
+    ).toBeCloseTo(0.006 + 0.0045 + 0.01, 6)
+    // Gemini：入力 100 × $0.75/M + 出力 1,500 × $3.75/M + 検索 2 回 × $14/1k
+    expect(
+      typicalAnswerCostUsd({ provider: 'gemini', model: 'gemini-3.8-flash', at: NOV_2026 }),
+    ).toBeCloseTo(0.000075 + 0.005625 + 0.028, 6)
+  })
+
+  it('単価が変わる日を過ぎると、新しい単価で出す', () => {
+    const cost = typicalAnswerCostUsd({
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      at: new Date('2027-01-01T00:00:00Z'),
+    })
+    expect(cost).toBeCloseTo(0.00015 + 0.01125 + 0.028, 6)
+  })
+
+  it('料金表にないモデルは null', () => {
+    expect(typicalAnswerCostUsd({ provider: 'openai', model: 'unknown', at: NOV_2026 })).toBeNull()
   })
 })

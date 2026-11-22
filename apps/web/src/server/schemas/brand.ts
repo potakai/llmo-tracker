@@ -42,6 +42,14 @@ export const competitorInput = z.object({
 
 export const promptText = z.string().trim().min(1, { error: '必須です' }).max(500)
 
+export const promptKind = z.enum(PROMPT_KINDS, { error: '質問の種類が正しくありません' })
+
+/** ブランドの登録で渡す質問。文字列だけなら質問文（question）として扱う */
+const brandPromptInput = z.union([
+  promptText.transform((text) => ({ text, kind: 'question' as const })),
+  z.object({ text: promptText, kind: promptKind.default('question') }),
+])
+
 export const createBrandInput = z.object({
   name: nameSchema,
   aliases: aliasesSchema,
@@ -54,10 +62,12 @@ export const createBrandInput = z.object({
       error: '同じ名前の競合が重複しています',
     }),
   prompts: z
-    .array(promptText)
+    .array(brandPromptInput)
     .min(1, { error: '質問を1つ以上登録してください' })
     .max(MAX_ACTIVE_PROMPTS, { error: `質問は${MAX_ACTIVE_PROMPTS}件までです` })
-    .refine(hasNoDuplicates, { error: '同じ質問が重複しています' }),
+    .refine((list) => hasNoDuplicates(list.map((p) => p.text)), {
+      error: '同じ質問が重複しています',
+    }),
   samplesPerPrompt: z.int().min(1).max(10).default(5),
   providers: z
     .array(z.enum(PROVIDERS))
@@ -96,8 +106,6 @@ export const updateCompetitorInput = competitorInput
   .extend({ domain: domainSchema.nullable() })
   .partial()
   .refine((value) => Object.keys(value).length > 0, { error: '変更する項目がありません' })
-
-export const promptKind = z.enum(PROMPT_KINDS, { error: '質問の種類が正しくありません' })
 
 export const createPromptInput = z.object({
   text: promptText,

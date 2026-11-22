@@ -2,6 +2,7 @@ import { prompt } from '@llmo/db'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { loadBrandForPage } from '@/server/brand-page'
+import { perAnswerCostUsd } from '@/server/cost-estimate'
 import { inOrganization } from '@/server/queries/tenant'
 import { MAX_ACTIVE_PROMPTS, MAX_COMPETITORS } from '@/server/schemas/brand'
 import { BrandInfoForm } from './brand-info-form'
@@ -9,7 +10,7 @@ import { CompetitorsEditor } from './competitors-editor'
 import { PromptsEditor } from './prompts-editor'
 
 export default async function SettingsPage({ params }: { params: Promise<{ brandId: string }> }) {
-  const { organizationId, brand, isDemo } = await loadBrandForPage((await params).brandId)
+  const { organizationId, brand, isDemo, llmMode } = await loadBrandForPage((await params).brandId)
   // 設定ではアーカイブした質問も見せる（元に戻せるように）
   const prompts = await db
     .select({ id: prompt.id, text: prompt.text, kind: prompt.kind, archivedAt: prompt.archivedAt })
@@ -33,6 +34,8 @@ export default async function SettingsPage({ params }: { params: Promise<{ brand
       />
       <BrandInfoForm
         readOnly={isDemo}
+        activePromptCount={brand.prompts.length}
+        perAnswerUsd={llmMode === 'live' ? perAnswerCostUsd() : undefined}
         brand={{
           id: brand.id,
           name: brand.name,
