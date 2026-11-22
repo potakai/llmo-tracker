@@ -9,6 +9,7 @@ import {
   isDemoMetadata,
   tokyoDate,
 } from '../src'
+import { startRun } from '../src/execute-run'
 import { countingProviders, db, extractor, seedBrand } from './fixtures'
 
 // テストどうしで日付がぶつからないように、テストごとに別の日を使う
@@ -237,5 +238,52 @@ describe('自動計測をオフにしたあと、朝のジョブの配信ステ�
 
     const summary = await executeRun(deps, runId)
     expect(summary.status).toBe('succeeded')
+  })
+})
+
+describe('run の開始（startRun）：確認と開始を 1 つの UPDATE で行う', () => {
+  async function queuedRun(trigger: 'scheduled' | 'manual', scheduleEnabled: boolean) {
+    const { brand } = await seedBrand({ samplesPerPrompt: 1 })
+    const created =
+      trigger === 'manual'
+        ? await createManualRun(db, brand.id)
+        : (await createDailyRuns(db, nextDate())).created.find((c) => c.brandId === brand.id)!
+    const runId = 'runId' in created ? created.runId : created.id
+    await db.update(brandTable).set({ scheduleEnabled }).where(eq(brandTable.id, brand.id))
+    return runId
+  }
+
+  const statusOf = async (runId: string) =>
+    (await db.select({ status: run.status }).from(run).where(eq(run.id, runId)))[0]?.status
+
+  it('自動計測がオフのブランドの queued の自動 run は、開始しない（queued のまま）', async () => {
+    const runId = await queuedRun('scheduled', false)
+    expect(await startRun(db, runId)).toBe(false)
+    expect(await statusOf(runId)).toBe('queued')
+  })
+
+  it('オンなら自動 run を開始する。手動 run はオフでも開始する', async () => {
+    const scheduled = await queuedRun('scheduled', true)
+    expect(await startRun(db, scheduled)).toBe(true)
+    expect(await statusOf(scheduled)).toBe('running')
+
+    const manual = await queuedRun('manual', false)
+    expect(await startRun(db, manual)).toBe(true)
+    expect(await statusOf(manual)).toBe('running')
+  })
+
+  it('動き出した自動 run は、オフにしても続きを開始できる。終わった run は開始しない', async () => {
+    const runId = await queuedRun('scheduled', true)
+    await startRun(db, runId)
+    const [row] = await db.select({ brandId: run.brandId }).from(run).where(eq(run.id, runId))
+    await db
+      .update(brandTable)
+      .set({ scheduleEnabled: false })
+      .where(eq(brandTable.id, row!.brandId))
+    expect(await startRun(db, runId)).toBe(true)
+
+    await db.update(run).set({ status: 'succeeded' }).where(eq(run.id, runId))
+    expect(await startRun(db, runId)).toBe(false)
+    expect(await statusOf(runId)).toBe('succeeded')
   })
 })

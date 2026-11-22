@@ -1,4 +1,5 @@
 import {
+  brand as brandTable,
   citation,
   type Db,
   type Provider,
@@ -141,20 +142,16 @@ export async function executeRunSlice(
   const { providers, extractor } =
     'llmFor' in deps ? deps.llmFor(target.brand.organizationId) : deps
 
-  // 朝のジョブの配信ステップだけが再試行されると、自動計測をオフにする前に作った自動 run が届く。
-  // queued から running に移す前に確かめて、オフなら実行せずに取り消す（手動の run はオフでも実行する）
-  const cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.id, runId))
-  if (cancelled.length > 0) {
-    return { done: true, summary: await summarizeFinished(db, runId, 'cancelled') }
+  if (!(await startRun(db, runId))) {
+    // 開始できなかった。自動計測がオフのブランドの queued の自動 run なら、実行せずに取り消す。
+    // 朝のジョブの配信ステップだけが再試行されると、オフにする前に作った自動 run が届くため
+    const cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.id, runId))
+    if (cancelled.length > 0) {
+      return { done: true, summary: await summarizeFinished(db, runId, 'cancelled') }
+    }
+    // 読んだあとに終わった・取り消されたなど。読み直して、終わっていればそのまま返す
+    return executeRunSlice(deps, runId, options)
   }
-
-  // 読んだあとに取り消されていたら動かさない（取り消した run を running に戻さない）
-  const [started] = await db
-    .update(runTable)
-    .set({ status: 'running', startedAt: sql`coalesce(${runTable.startedAt}, now())` })
-    .where(and(eq(runTable.id, runId), inArray(runTable.status, ['queued', 'running'])))
-    .returning({ id: runTable.id })
-  if (!started) return executeRunSlice(deps, runId, options)
 
   const brand = target.brand
   const tasks = await pendingTasks(db, runId, brand, options.retryFailedBefore)
@@ -385,6 +382,43 @@ export function toCitations(sources: AskResult['sources'], brandDomain: string |
     })
   }
   return rows
+}
+
+/**
+ * run を running にする。開始できたら true。
+ * 確認と開始を 1 つの UPDATE で行うので、確認から開始までのあいだに自動計測がオフにされても開始しない。
+ * - queued の自動 run：ブランドの自動計測がオンのときだけ開始する
+ * - queued の手動 run：オフでも開始する（「今すぐ計測」はオフでも使える）
+ * - running の run：区切って続きから再開する分。途中でオフにされても最後まで実行する
+ * - 終わった run（取り消しを含む）：開始しない（取り消した run を running に戻さない）
+ */
+export async function startRun(db: Db, runId: string): Promise<boolean> {
+  const [started] = await db
+    .update(runTable)
+    .set({ status: 'running', startedAt: sql`coalesce(${runTable.startedAt}, now())` })
+    .where(
+      and(
+        eq(runTable.id, runId),
+        or(
+          eq(runTable.status, 'running'),
+          and(
+            eq(runTable.status, 'queued'),
+            or(
+              eq(runTable.trigger, 'manual'),
+              inArray(
+                runTable.brandId,
+                db
+                  .select({ id: brandTable.id })
+                  .from(brandTable)
+                  .where(eq(brandTable.scheduleEnabled, true)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: runTable.id })
+  return started !== undefined
 }
 
 /** 終わっている run の集計。取り消した run は、回答の数から決めずに cancelled のまま返す */
