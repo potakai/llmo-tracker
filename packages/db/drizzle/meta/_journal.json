@@ -43,6 +43,13 @@
       "when": 1795339746972,
       "tag": "0005_lively_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795343964751,
+      "tag": "0006_typical_franklin_storm",
+      "breakpoints": true
     }
   ]
 }

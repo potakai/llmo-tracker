@@ -67,15 +67,23 @@ export function createDataForSeoProvider(options: DataForSeoOptions): SerpProvid
       ...init,
       headers: { authorization, 'content-type': 'application/json' },
     })
-    if (!res.ok) throw new SerpApiError(`DataForSEO が HTTP ${res.status} を返しました`, null)
-    const parsed = envelopeSchema.safeParse(await res.json())
-    if (!parsed.success) throw new SerpApiError('DataForSEO の応答の形が想定と違います', null)
+    if (!res.ok) {
+      throw new SerpApiError(`DataForSEO が HTTP ${res.status} を返しました`, null, 'request')
+    }
+    const parsed = envelopeSchema.safeParse(await readJson(res))
+    if (!parsed.success) {
+      throw new SerpApiError(
+        `DataForSEO の応答の形が想定と違います（${describeIssue(parsed.error)}）`,
+        null,
+        'request',
+      )
+    }
     const body = parsed.data
     if (body.status_code !== STATUS.OK) {
-      throw new SerpApiError(`DataForSEO: ${body.status_message}`, body.status_code)
+      throw new SerpApiError(`DataForSEO: ${body.status_message}`, body.status_code, 'request')
     }
     const task = body.tasks?.[0]
-    if (!task) throw new SerpApiError('DataForSEO の応答にタスクがありません', null)
+    if (!task) throw new SerpApiError('DataForSEO の応答にタスクがありません', null, 'request')
     return task
   }
 
@@ -89,7 +97,7 @@ export function createDataForSeoProvider(options: DataForSeoOptions): SerpProvid
         signal: abortSignal,
       })
       if (task.status_code !== STATUS.TASK_CREATED) {
-        throw new SerpApiError(`DataForSEO: ${task.status_message}`, task.status_code)
+        throw new SerpApiError(`DataForSEO: ${task.status_message}`, task.status_code, 'task')
       }
       return { taskId: task.id, costUsd: task.cost ?? null }
     },
@@ -111,8 +119,25 @@ export function toFetchedTask(task: DataForSeoTask): FetchedTask {
     return { status: 'ready', serp: { organic: [], aiOverview: null }, raw: task }
   }
   if (task.status_code !== STATUS.OK) {
-    throw new SerpApiError(`DataForSEO: ${task.status_message}`, task.status_code)
+    throw new SerpApiError(`DataForSEO: ${task.status_message}`, task.status_code, 'task')
   }
   const result = task.result?.[0]
   return { status: 'ready', serp: parseSerpResult(result), raw: result ?? null }
+}
+
+/** 本文を JSON として読む。JSON でなければ、応答の形の違いとして扱う */
+async function readJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json()
+  } catch {
+    throw new SerpApiError('DataForSEO の応答が JSON ではありません', null, 'request')
+  }
+}
+
+/** 形の違いの最初の 1 件（どの項目が違うか） */
+function describeIssue(error: z.ZodError): string {
+  const issue = error.issues[0]
+  if (!issue) return '不明'
+  const path = issue.path.length > 0 ? issue.path.join('.') : '（全体）'
+  return `${path}: ${issue.message}`
 }

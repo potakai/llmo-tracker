@@ -341,6 +341,13 @@ export const serpResult = pgTable(
     postedAt: timestamp({ withTimezone: true }),
     fetchedAt: timestamp({ withTimezone: true }),
     error: text(),
+    /**
+     * 結果を取りに行って、障害（HTTP のエラー・応答の形の違い・通信のエラーなど）で失敗したときの最後のエラー。
+     * 普通に応答が返ってきたら（まだ結果が出ていなくても）消す。pending の行で、空なら「まだ結果が出ていない」、
+     * 入っていれば「障害で取れていない」
+     */
+    lastFetchError: text(),
+    lastFetchErrorAt: timestamp({ withTimezone: true }),
     /** API が返した費用（USD） */
     costUsd: numeric({ precision: 10, scale: 6, mode: 'number' }),
     /** AI による概要が出たか（結果が出るまでは null） */

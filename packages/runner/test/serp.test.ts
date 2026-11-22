@@ -31,8 +31,13 @@ import {
 import { db, extractor, seedBrand } from './fixtures'
 
 // テストどうしで日付がぶつからないように、テストごとに別の日を使う
+// （基準日から 1 日ずつ進める。月をまたいでも正しい日付になる）
 let day = 0
-const nextDate = () => `2031-02-${String(++day).padStart(2, '0')}`
+const nextDate = () => {
+  const date = new Date(Date.UTC(2031, 1, 1))
+  date.setUTCDate(date.getUTCDate() + day++)
+  return date.toISOString().slice(0, 10)
+}
 const UNLIMITED = { budgetMs: Number.POSITIVE_INFINITY }
 const allFake = () => 'fake' as const
 
@@ -426,7 +431,7 @@ describe('失敗したキーワード', () => {
     const fake = createFakeSerpProvider()
     const provider = recordingProvider('fake', {
       post: async (keyword) => {
-        if (keyword === bad) throw new SerpApiError('Payment Required.', 40200)
+        if (keyword === bad) throw new SerpApiError('Payment Required.', 40200, 'request')
         return fake.postTask({ keyword })
       },
     })
@@ -461,7 +466,7 @@ describe('失敗したキーワード', () => {
     )
     const provider = recordingProvider('fake', {
       fetch: async (keyword) => {
-        if (keyword === taskError) throw new SerpApiError('Task Not Found.', 40400)
+        if (keyword === taskError) throw new SerpApiError('Task Not Found.', 40400, 'task')
         throw new TypeError('fetch failed')
       },
     })
@@ -482,14 +487,111 @@ describe('失敗したキーワード', () => {
       ]),
     )
 
-    // 待つのをやめたら、結果待ちの行は理由つきで failed にする
+    // 待つのをやめたら、結果待ちの行は理由つきで failed にする（障害で取れていなければ、最後のエラーを入れる）
     await giveUpSerpTasks(db, date)
     const [left] = await db
       .select({ status: serpResult.status, error: serpResult.error })
       .from(serpResult)
       .innerJoin(prompt, eq(prompt.id, serpResult.promptId))
       .where(and(eq(prompt.text, networkError), eq(serpResult.searchedOn, date)))
-    expect(left).toEqual({ status: 'failed', error: '時間内に検索の結果が出ませんでした' })
+    expect(left).toEqual({
+      status: 'failed',
+      error: '検索の結果を取得できませんでした（最後のエラー：fetch failed）',
+    })
+  })
+})
+
+describe('結果の取得の失敗（最後のエラーを残す）', () => {
+  /** 頼んだ状態の行を 1 つ作り、fetch を差し替えられるようにする */
+  async function postedRow(label: string) {
+    const keyword = uniqueKeyword(label)
+    const { prompts } = await seedBrand({ keywords: [keyword] })
+    const date = nextDate()
+    const ids = keywordIds(prompts)
+    await claimSerpTasks(db, date, [{ promptId: ids[0]!, mode: 'fake' }])
+    let next: () => Promise<FetchedTask> = async () => ({ status: 'pending' })
+    const provider = recordingProvider('fake', { fetch: () => next() })
+    const deps = depsWith({ fake: provider.provider })
+    const options = { ...UNLIMITED, promptIds: ids }
+    await postSerpTasks(deps, date, options)
+    const collect = async (fetch: () => Promise<FetchedTask>) => {
+      next = fetch
+      await collectSerpResults(deps, date, options)
+      return (await rowsOf(ids, date))[0]!
+    }
+    return { date, ids, collect }
+  }
+
+  it('障害（HTTP のエラー・応答の形の違い・通信のエラー）なら pending のまま、最後のエラーと時刻を残す', async () => {
+    const { collect } = await postedRow('障害')
+
+    const http = await collect(async () => {
+      throw new SerpApiError('DataForSEO が HTTP 502 を返しました', null, 'request')
+    })
+    expect(http).toMatchObject({ status: 'pending', error: null })
+    expect(http.lastFetchError).toMatch(/HTTP 502/)
+    expect(http.lastFetchErrorAt).toBeInstanceOf(Date)
+
+    const shape = await collect(async () => {
+      throw new SerpApiError('DataForSEO の応答の形が想定と違います', null, 'request')
+    })
+    expect(shape.lastFetchError).toMatch(/応答の形が想定と違います/)
+
+    const network = await collect(async () => {
+      throw new TypeError('fetch failed')
+    })
+    expect(network).toMatchObject({ status: 'pending' })
+    expect(network.lastFetchError).toMatch(/fetch failed/)
+  })
+
+  it('「結果がまだ出ていない」と返ってきたら、最後のエラーを消す（障害と区別できる）', async () => {
+    const { collect } = await postedRow('まだ')
+    await collect(async () => {
+      throw new SerpApiError('DataForSEO が HTTP 500 を返しました', null, 'request')
+    })
+
+    const notYet = await collect(async () => ({ status: 'pending' }))
+
+    expect(notYet).toMatchObject({
+      status: 'pending',
+      lastFetchError: null,
+      lastFetchErrorAt: null,
+    })
+  })
+
+  it('障害が続いたまま諦めたら、理由に最後のエラーを入れる。まだ出ていないだけなら、そう書く', async () => {
+    const broken = await postedRow('障害のまま')
+    await broken.collect(async () => {
+      throw new SerpApiError('DataForSEO が HTTP 503 を返しました', null, 'request')
+    })
+    const waiting = await postedRow('まだのまま')
+    await waiting.collect(async () => ({ status: 'pending' }))
+
+    await giveUpSerpTasks(db, broken.date)
+    await giveUpSerpTasks(db, waiting.date)
+
+    const [brokenRow] = await rowsOf(broken.ids, broken.date)
+    const [waitingRow] = await rowsOf(waiting.ids, waiting.date)
+    expect(brokenRow?.status).toBe('failed')
+    expect(brokenRow?.error).toMatch(/結果を取得できませんでした.*最後のエラー.*HTTP 503/)
+    expect(waitingRow?.error).toBe('時間内に検索の結果が出ませんでした')
+  })
+
+  it('タスク自体のエラーなら、取り直さずに failed にする（ステータスコードがあっても障害なら取り直す）', async () => {
+    const task = await postedRow('タスクのエラー')
+    const request = await postedRow('全体のエラー')
+
+    const taskRow = await task.collect(async () => {
+      throw new SerpApiError('DataForSEO: Task Not Found.', 40400, 'task')
+    })
+    const requestRow = await request.collect(async () => {
+      throw new SerpApiError('DataForSEO: Internal Error.', 50000, 'request')
+    })
+
+    expect(taskRow).toMatchObject({ status: 'failed' })
+    expect(taskRow.error).toMatch(/Task Not Found/)
+    expect(requestRow).toMatchObject({ status: 'pending' })
+    expect(requestRow.lastFetchError).toMatch(/Internal Error/)
   })
 })
 

@@ -254,6 +254,58 @@ describe('createDataForSeoProvider', () => {
   })
 })
 
+describe('createDataForSeoProvider のエラー（障害か、タスク自体のエラーか）', () => {
+  /** 例外を受け取って返す */
+  async function caught(promise: Promise<unknown>): Promise<SerpApiError> {
+    try {
+      await promise
+    } catch (error) {
+      if (error instanceof SerpApiError) return error
+      throw error
+    }
+    throw new Error('例外にならなかった')
+  }
+
+  it('HTTP のエラー・応答の形の違い・全体のエラーは、障害（request）として、中身の分かるメッセージにする', async () => {
+    const stub = stubFetch([
+      new Response('Bad Gateway', { status: 502 }),
+      { unexpected: true },
+      { status_code: 50000, status_message: 'Internal Error.', tasks: null },
+    ])
+    const provider = createDataForSeoProvider({ login: 'me', password: 'pw', fetch: stub.fetch })
+    const fetch = () => provider.fetchTask({ taskId: 'task-1', keyword: 'a' })
+
+    const http = await caught(fetch())
+    expect(http).toMatchObject({ scope: 'request', statusCode: null })
+    expect(http.message).toMatch(/HTTP 502/)
+
+    const shape = await caught(fetch())
+    expect(shape).toMatchObject({ scope: 'request', statusCode: null })
+    expect(shape.message).toMatch(/応答の形が想定と違います.*status_code/)
+
+    const envelope = await caught(fetch())
+    expect(envelope).toMatchObject({ scope: 'request', statusCode: 50000 })
+    expect(envelope.message).toMatch(/Internal Error/)
+  })
+
+  it('タスク自体のエラー（取り直しても同じ）は、task として返す', async () => {
+    const stub = stubFetch([
+      envelope({ id: 'task-1', status_code: 40400, status_message: 'Not Found.' }),
+      envelope({ id: 'x', status_code: 40501, status_message: 'Invalid Field.', cost: 0 }),
+    ])
+    const provider = createDataForSeoProvider({ login: 'me', password: 'pw', fetch: stub.fetch })
+
+    expect(await caught(provider.fetchTask({ taskId: 'task-1', keyword: 'a' }))).toMatchObject({
+      scope: 'task',
+      statusCode: 40400,
+    })
+    expect(await caught(provider.postTask({ keyword: 'a' }))).toMatchObject({
+      scope: 'task',
+      statusCode: 40501,
+    })
+  })
+})
+
 describe('フェイクの DataForSEO', () => {
   const hints = {
     brand: { name: '◯◯会計', domain: 'maru.example.com' },

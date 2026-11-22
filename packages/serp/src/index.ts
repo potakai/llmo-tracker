@@ -18,6 +18,7 @@ export {
   type PostedTask,
   type PostTaskInput,
   SerpApiError,
+  type SerpErrorScope,
   type SerpFakeHints,
   type SerpMode,
   type SerpProvider,

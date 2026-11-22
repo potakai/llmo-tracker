@@ -325,14 +325,20 @@ async function collectOne(
       },
     })
   } catch (error) {
-    // タスク自体のエラー（ステータスコードがある）は取り直しても同じなので、失敗として記録する
-    if (error instanceof SerpApiError && error.statusCode !== null) {
+    // タスク自体のエラーは取り直しても同じなので、失敗として記録する
+    if (error instanceof SerpApiError && error.scope === 'task') {
       await markSerpFailed(deps.db, row.id, `検索の結果を取得できませんでした：${error.message}`)
       return 'failed'
     }
+    // 障害（HTTP のエラー・応答の形の違い・通信のエラーなど）は、最後のエラーを残して次の回に取り直す
+    await recordFetchError(deps.db, row.id, errorMessage(error))
     return 'stillPending'
   }
-  if (fetched.status === 'pending') return 'stillPending'
+  if (fetched.status === 'pending') {
+    // 普通に応答が返ってきた（まだ結果が出ていないだけ）ので、前の障害のエラーは消す
+    await recordFetchError(deps.db, row.id, null)
+    return 'stillPending'
+  }
 
   const extraction = await extractAiOverview(
     deps.extractorFor(row.organizationId),
@@ -374,8 +380,13 @@ async function competitorsOf(db: Db, brandIds: string[]) {
  */
 export const DEFAULT_SERP_STALE_AFTER_MINUTES = 180
 
-/** pending の行を終わらせるときの理由。頼んだか・頼めたか確かめられないか・頼む前か、で分ける */
+/**
+ * pending の行を終わらせるときの理由。頼んだか（障害で取れていないか・まだ出ていないか）・
+ * 頼めたか確かめられないか・頼む前か、で分ける
+ */
 const giveUpReason = sql`case
+  when ${serpResult.taskId} is not null and ${serpResult.lastFetchError} is not null
+    then left('検索の結果を取得できませんでした（最後のエラー：' || ${serpResult.lastFetchError} || '）', ${MAX_ERROR_LENGTH})
   when ${serpResult.taskId} is not null then '時間内に検索の結果が出ませんでした'
   when ${serpResult.postAttemptedAt} is not null then '検索を頼めたか確かめられませんでした（二重に費用がかからないよう、頼み直していません）'
   else '検索を頼む前に、ジョブが終わりました' end`
@@ -421,6 +432,17 @@ export async function recoverStaleSerpResults(
  */
 function isModeAllowed(deps: SerpDeps, row: { mode: SerpMode; organizationId: string }): boolean {
   return row.mode === 'fake' || deps.serp.modeFor(row.organizationId) === 'live'
+}
+
+/** 結果の取得の最後のエラーを残す（null なら消す）。pending の行だけ */
+async function recordFetchError(db: Db, id: string, message: string | null) {
+  await db
+    .update(serpResult)
+    .set({
+      lastFetchError: message === null ? null : message.slice(0, MAX_ERROR_LENGTH),
+      lastFetchErrorAt: message === null ? null : sql`now()`,
+    })
+    .where(and(eq(serpResult.id, id), eq(serpResult.status, 'pending')))
 }
 
 async function markSerpFailed(db: Db, id: string, message: string) {

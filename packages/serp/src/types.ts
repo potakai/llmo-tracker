@@ -80,11 +80,21 @@ export interface SerpProvider {
   fetchTask(input: FetchTaskInput): Promise<FetchedTask>
 }
 
-/** DataForSEO がエラーを返した（認証の失敗、残高不足、タスクの失敗など） */
+/**
+ * どこで失敗したか。
+ * - request：呼び出し全体の失敗（HTTP のエラー、応答の形の違い、認証・残高・DataForSEO 側の障害など）。
+ *   タスクは無事なことがあるので、結果の取得なら取り直す
+ * - task：そのタスク自体のエラー（タスクが作れない・見つからない など）。取り直しても同じ
+ */
+export type SerpErrorScope = 'request' | 'task'
+
+/** DataForSEO の呼び出しに失敗した */
 export class SerpApiError extends Error {
   constructor(
     message: string,
+    /** DataForSEO のステータスコード。HTTP のエラーや応答の形の違いでは null */
     readonly statusCode: number | null,
+    readonly scope: SerpErrorScope,
   ) {
     super(message)
     this.name = 'SerpApiError'
