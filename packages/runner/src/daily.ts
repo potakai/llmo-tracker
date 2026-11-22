@@ -1,23 +1,10 @@
-import {
-  brand as brandTable,
-  type Db,
-  organization,
-  prompt as promptTable,
-  run as runTable,
-} from '@llmo/db'
-import { and, eq, exists, isNull } from 'drizzle-orm'
+import { type Db, run as runTable } from '@llmo/db'
+import { and, eq } from 'drizzle-orm'
 import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { createScheduledRun } from './create-run'
+import { listScheduledBrands } from './scheduled-brands'
 
-/** organization.metadata に `{"demo":true}` が入っている組織はデモ（閲覧専用） */
-export function isDemoMetadata(metadata: string | null): boolean {
-  if (!metadata) return false
-  try {
-    return JSON.parse(metadata)?.demo === true
-  } catch {
-    return false
-  }
-}
+export { isDemoMetadata } from './scheduled-brands'
 
 export type DailyRunsResult = {
   /** 作った run（このあとジョブに渡す） */
@@ -40,26 +27,10 @@ export type DailyRunsResult = {
  * - 何度呼んでも、1 ブランド 1 日 1 つ（DB の一意制約）。ジョブがリトライされても重複しない
  */
 export async function createDailyRuns(db: Db, date: string): Promise<DailyRunsResult> {
-  const brands = await db
-    .select({ id: brandTable.id, metadata: organization.metadata })
-    .from(brandTable)
-    .innerJoin(organization, eq(organization.id, brandTable.organizationId))
-    .where(
-      and(
-        eq(brandTable.scheduleEnabled, true),
-        exists(
-          db
-            .select({ one: promptTable.id })
-            .from(promptTable)
-            .where(and(eq(promptTable.brandId, brandTable.id), isNull(promptTable.archivedAt))),
-        ),
-      ),
-    )
-    .orderBy(brandTable.createdAt)
+  const brands = await listScheduledBrands(db)
 
   const result: DailyRunsResult = { created: [], skipped: 0, toDispatch: [], cancelled: [] }
   for (const b of brands) {
-    if (isDemoMetadata(b.metadata)) continue
     const created = await createScheduledRun(db, b.id, date)
     if (created) result.created.push({ runId: created.id, brandId: b.id })
     else result.skipped += 1

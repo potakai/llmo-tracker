@@ -12,6 +12,7 @@ import { db } from '@/lib/db'
 import { getLlmPolicy } from '@/lib/llm'
 import { inngest } from './client'
 import { createRunRequestedEvent, runRequested } from './events'
+import { recoverStaleSerpFunction, serpDailyFunction } from './serp'
 
 // ジョブの中身はすべて packages/runner にある。ここはそれを Inngest のステップに載せるだけ
 
@@ -96,6 +97,7 @@ export const dailyRunsFunction = inngest.createFunction(
 /**
  * 止まった run の回収（10 分ごと）。30 分なにも進んでいない queued / running の run を終わらせる。
  * ジョブが落ちた・イベントを送る前に失敗したなどで残った run が、次の実行を止め続けないようにする。
+ * Google の検索の行の回収は、別の関数（recover-stale-serp）にしている（片方のリトライが尽きても、もう片方は動く）
  */
 export const recoverStaleRunsFunction = inngest.createFunction(
   { id: 'recover-stale-runs', triggers: [{ cron: '*/10 * * * *' }] },
@@ -106,4 +108,10 @@ export const recoverStaleRunsFunction = inngest.createFunction(
   },
 )
 
-export const functions = [executeRunFunction, dailyRunsFunction, recoverStaleRunsFunction]
+export const functions = [
+  executeRunFunction,
+  dailyRunsFunction,
+  recoverStaleRunsFunction,
+  serpDailyFunction,
+  recoverStaleSerpFunction,
+]

@@ -2,10 +2,12 @@ import { brand, competitor, prompt } from '@llmo/db'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '@/lib/db'
+import { getSerpPolicy } from '@/lib/serp'
 import type { OrgEnv } from '../context'
 import { errors } from '../errors'
 import { getBrandHints } from '../queries/hints'
 import { getBrandMetrics } from '../queries/metrics'
+import { getSerpComparison } from '../queries/serp'
 import { brandParams, createBrandInput, metricsQuery } from '../schemas/brand'
 import { validate } from '../validator'
 
@@ -105,4 +107,17 @@ export const brandRoutes = new Hono<OrgEnv>()
     const { brandId } = c.req.valid('param')
     const found = await findBrandInOrg(c.var.organizationId, brandId)
     return c.json(await getBrandHints(c.var.organizationId, found, c.var.llmMode))
+  })
+
+  // Google との比較：キーワードの質問ごとに、Google の検索順位・AI による概要・ChatGPT / Gemini の言及率
+  .get('/:brandId/serp', validate('param', brandParams), async (c) => {
+    const { brandId } = c.req.valid('param')
+    const organizationId = c.var.organizationId
+    await findBrandInOrg(organizationId, brandId)
+    return c.json(
+      await getSerpComparison(organizationId, brandId, {
+        serpMode: getSerpPolicy().modeFor(organizationId),
+        llmMode: c.var.llmMode,
+      }),
+    )
   })

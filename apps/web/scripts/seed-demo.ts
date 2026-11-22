@@ -12,7 +12,14 @@ import {
   type Extractor,
   type ProviderId,
 } from '@llmo/llm'
-import { createScheduledRun, executeRun } from '@llmo/runner'
+import {
+  claimSerpTasks,
+  collectSerpResults,
+  createScheduledRun,
+  executeRun,
+  postSerpTasks,
+} from '@llmo/runner'
+import { createFakeSerpProvider } from '@llmo/serp'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -228,12 +235,13 @@ async function main() {
       .returning()) as [typeof brand.$inferSelect]
   }
   await db.insert(competitor).values(COMPETITORS.map((c) => ({ brandId: b.id, ...c })))
-  await db
+  const prompts = await db
     .insert(prompt)
     .values([
       ...PROMPTS.map((text) => ({ brandId: b.id, text, kind: 'question' as const })),
       ...KEYWORD_PROMPTS.map((text) => ({ brandId: b.id, text, kind: 'keyword' as const })),
     ])
+    .returning({ id: prompt.id, kind: prompt.kind })
 
   // 4. 30 日分の自動計測
   const state = { day: 0 }
@@ -249,8 +257,40 @@ async function main() {
     process.stdout.write(`\r計測中… ${day + 1}/${DAYS} 日`)
   }
 
+  // 5. 今日の Google の検索結果（フェイクの DataForSEO。キーワードの質問だけ）
+  await seedSerpResults(
+    prompts.filter((p) => p.kind === 'keyword').map((p) => p.id),
+    today,
+  )
+
   console.log(`\n完了。${DEMO_ACCOUNT.email} / ${DEMO_ACCOUNT.password} でログインできます`)
   process.exit(0)
+}
+
+/** キーワードの質問の、その日の Google の検索結果を作る（毎朝のジョブと同じ関数で、フェイクの DataForSEO を使う） */
+async function seedSerpResults(promptIds: string[], date: string) {
+  await claimSerpTasks(
+    db,
+    date,
+    promptIds.map((promptId) => ({ promptId, mode: 'fake' as const })),
+  )
+  const fake = createFakeSerpProvider()
+  const deps = {
+    db,
+    serp: {
+      // デモ組織は本物を使わない
+      modeFor: () => 'fake' as const,
+      providerFor: (mode: 'live' | 'fake') => {
+        if (mode !== 'fake') throw new Error('デモでは本物の DataForSEO を使いません')
+        return fake
+      },
+    },
+    extractorFor: () => createRuleBasedExtractor(),
+  }
+  // デモのキーワードだけを扱う（同じ日のほかの組織の行には触らない）
+  const options = { budgetMs: Number.POSITIVE_INFINITY, promptIds }
+  await postSerpTasks(deps, date, options)
+  await collectSerpResults(deps, date, options)
 }
 
 main().catch((error) => {

@@ -9,7 +9,8 @@ ChatGPT / Gemini に登録した質問を毎日投げ、回答の中で自社と
 - `apps/web`：Next.js 16（App Router）。API は Hono を Route Handler に載せている（`src/server/`）。認証は Better Auth
 - `packages/db`：Drizzle のスキーマ・マイグレーション
 - `packages/llm`：AI の呼び出し（OpenAI / Gemini / フェイク）と、回答からの言及の抽出
-- `packages/runner`：実行（run）の作成と処理、毎日の run の作成、止まった run の回収
+- `packages/serp`：DataForSEO（Google の検索順位と AI による概要）の呼び出し（本物 / フェイク）と、結果の取り出し
+- `packages/runner`：実行（run）の作成と処理、毎日の run の作成、止まった run の回収、Google の検索結果の取得と保存
 - `apps/web/src/inngest`：Inngest の関数（`/api/inngest` で公開）。中身は `packages/runner` を呼ぶだけにして、ロジックとテストは runner に置く
 
 ## コマンド
@@ -34,6 +35,7 @@ pnpm inngest:dev    # Inngest の開発サーバー（RUN_DISPATCH=inngest と I
 - **スキーマを変えたら `pnpm db:generate` でマイグレーションを作り、`packages/db/drizzle/` ごとコミット**する。生成された SQL は手で書き換えない（既存のデータを直す必要があるときだけ、SQL の先頭に追記して理由をコメントする）
 - `packages/db/src/schema/auth.ts` は Better Auth の生成物。手で編集せず `pnpm auth:generate` で作り直す
 - **本物の AI API は叩かない**。開発・テストは `LLM_MODE=fake`。`LLM_MODE=live` や `pnpm ask` は費用がかかるので、人に頼まれたときだけ
+- **本物の DataForSEO も叩かない**。開発・テストは `SERP_MODE` を未設定（フェイク）にする。DataForSEO を使う場所では `createSerpPolicy(env)` を通す（本物は `SERP_MODE=live` かつ `LIVE_ORGANIZATION_IDS` の組織だけ）
 - AI のプロバイダーや抽出器を新しく使う場所では、`createProvidersFromEnv` を直接呼ばず `createLlmPolicy(env).llmFor(organizationId)` を通す（本物の AI は `LIVE_ORGANIZATION_IDS` の組織だけ）
 - 質問（prompt）の文面は書き換えない設計。変えたいときはアーカイブして新しく追加する
 - 環境変数はルートの `.env` に 1 つ（`apps/web/.env` は作らない）。足したら `.env.example` に足す。CI（`.github/workflows/ci.yml`）には、**CI の中で実際に使うものだけ**足す（CI は `LLM_MODE=fake` で、run を同じプロセスで実行するので、本物の AI のキーや Inngest のキーは要らない）。本番で使うものは Vercel の環境変数に入れる

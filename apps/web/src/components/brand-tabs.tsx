@@ -8,10 +8,12 @@ export function BrandTabs({ brandId }: { brandId: string }) {
   const pathname = usePathname()
   const base = `/app/brands/${brandId}`
   const isHints = pathname.startsWith(`${base}/hints`)
+  const isGoogle = pathname.startsWith(`${base}/google`)
   const isSettings = pathname.startsWith(`${base}/settings`)
   const tabs = [
-    { href: base, label: '計測結果', active: !isHints && !isSettings },
+    { href: base, label: '計測結果', active: !isHints && !isGoogle && !isSettings },
     { href: `${base}/hints`, label: '改善のヒント', active: isHints },
+    { href: `${base}/google`, label: 'Google との比較', active: isGoogle },
     { href: `${base}/settings`, label: '設定', active: isSettings },
   ]
   return (
