@@ -8,7 +8,7 @@ import {
 } from '@llmo/db'
 import type { Extractor } from '@llmo/llm'
 import { type FetchedTask, SerpApiError, type SerpPolicy } from '@llmo/serp'
-import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { runUntilDeadline } from './deadline'
 import { listScheduledBrands } from './scheduled-brands'
 import { extractAiOverview, type SerpBrand, saveSerpSuccess } from './serp-save'
@@ -171,20 +171,38 @@ export async function postSerpTasks(
   return { ...counts, remaining: rows.length - processed }
 }
 
+export type CollectOptions = SerpSliceOptions & {
+  /**
+   * カーソル：この ID より後の行だけを取りに行く（前の呼び出しが返した cursor を渡す）。
+   * 1 回の取得ラウンドの中で、まだ結果が出ていない行ばかりを繰り返さず、全部の行を 1 回ずつ確かめるため
+   */
+  after?: string | null
+}
+
+export type CollectResult = {
+  succeeded: number
+  failed: number
+  /** 取りに行ったが、まだ結果が出ていない数 */
+  pending: number
+  /** 予算を使い切って見送った数 */
+  remaining: number
+  /** 見送った分があれば、続きを取りに行くときに after に渡す値。なければ null */
+  cursor: string | null
+}
+
 /**
  * その日の頼んである行について、結果を取りに行く（task_get）。
  * - まだ終わっていなければ pending のまま（あとでもう一度呼ぶ）
  * - 終わっていれば、順位と AI による概要を照らし合わせて保存する
  * - DataForSEO がタスクのエラーを返したら、そのキーワードだけ failed にする。
  *   通信のエラーなどは pending のまま（次に呼んだときに取り直す。結果の取得は無料）
- * pending は取りに行ったがまだ結果が出ていない数、remaining は予算を使い切って見送った数
- * （remaining が残っていれば、もう一度呼べば続きを取りに行く）
+ * 行は ID の順（作った順）に取りに行く。remaining が残っていれば、返した cursor を after に渡して呼ぶと続きから取りに行く
  */
 export async function collectSerpResults(
   deps: SerpDeps,
   date: string,
-  options: SerpSliceOptions,
-): Promise<{ succeeded: number; failed: number; pending: number; remaining: number }> {
+  options: CollectOptions,
+): Promise<CollectResult> {
   const { db } = deps
   const deadline = Date.now() + options.budgetMs
   const rows = await db
@@ -208,9 +226,10 @@ export async function collectSerpResults(
         eq(serpResult.status, 'pending'),
         isNotNull(serpResult.taskId),
         onlyPrompts(options.promptIds),
+        options.after ? gt(serpResult.id, options.after) : undefined,
       ),
     )
-    .orderBy(asc(serpResult.createdAt))
+    .orderBy(asc(serpResult.id))
   const competitors = await competitorsOf(db, [...new Set(rows.map((r) => r.brandId))])
 
   const counts = { succeeded: 0, failed: 0, stillPending: 0 }
@@ -228,12 +247,51 @@ export async function collectSerpResults(
       counts[outcome] += 1
     },
   )
+  const remaining = rows.length - processed
   return {
     succeeded: counts.succeeded,
     failed: counts.failed,
     pending: counts.stillPending,
-    remaining: rows.length - processed,
+    remaining,
+    // runUntilDeadline は先頭から順に始め、締め切りを過ぎたらそれ以降は始めないので、処理したのは先頭の processed 件
+    cursor: remaining > 0 ? (rows[processed - 1]?.id ?? null) : null,
   }
+}
+
+/** ジョブのステップ（Inngest の step.run / step.sleep）。テストでは、その場で実行するものを渡す */
+export type SerpJobSteps = {
+  run<T>(name: string, fn: () => Promise<T>): Promise<T>
+  sleep(name: string): Promise<void>
+}
+
+/**
+ * 待ってから結果を取りに行く、を未完了の行がなくなるまで（最大 maxRounds 回）繰り返す。
+ * 1 回の取得ラウンドでは、カーソルを進めながら全部の行を 1 回ずつ確かめる（予算で区切っても同じ行を繰り返さない）。
+ * 1 回の呼び出しで少なくとも 1 行は進むので、ラウンドは必ず終わり、上限の回数で必ず止まる。
+ * 終わったラウンドの数と、最後のラウンドで結果が出ていなかった行の数を返す
+ */
+export async function waitAndCollectSerpResults(
+  steps: SerpJobSteps,
+  collect: (after: string | null) => Promise<CollectResult>,
+  options: { maxRounds: number },
+): Promise<{ rounds: number; pending: number }> {
+  let pending = 0
+  for (let round = 1; round <= options.maxRounds; round += 1) {
+    await steps.sleep(`wait-${round}`)
+    pending = 0
+    let after: string | null = null
+    for (let slice = 1; ; slice += 1) {
+      const cursor: string | null = after
+      const result: CollectResult = await steps.run(`collect-${round}-${slice}`, () =>
+        collect(cursor),
+      )
+      pending += result.pending
+      if (result.remaining === 0 || result.cursor === null) break
+      after = result.cursor
+    }
+    if (pending === 0) return { rounds: round, pending }
+  }
+  return { rounds: options.maxRounds, pending }
 }
 
 type CollectRow = {

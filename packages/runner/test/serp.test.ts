@@ -25,6 +25,7 @@ import {
   giveUpSerpTasks,
   postSerpTasks,
   type SerpDeps,
+  waitAndCollectSerpResults,
 } from '../src'
 import { db, extractor, seedBrand } from './fixtures'
 
@@ -581,6 +582,94 @@ describe('本物の DataForSEO の許可がなくなった組織（頼む・取�
     expect(live.posted).toEqual([keyword])
     expect(live.fetched).toEqual([keyword])
     expect((await rowsOf(ids, date))[0]?.status).toBe('succeeded')
+  })
+})
+
+describe('結果を取りに行く順番（未完了の行ばかり繰り返さない）', () => {
+  /** いつまでも結果が出ない（pending を返す）キーワードを 3 つ、頼んだ状態にする */
+  async function threePendingKeywords() {
+    const keywords = [uniqueKeyword('先頭'), uniqueKeyword('2 番目'), uniqueKeyword('3 番目')]
+    const { prompts } = await seedBrand({ keywords })
+    const date = nextDate()
+    const ids = keywordIds(prompts)
+    await claimSerpTasks(
+      db,
+      date,
+      ids.map((promptId) => ({ promptId, mode: 'fake' as const })),
+    )
+    const provider = recordingProvider('fake', { fetch: async () => ({ status: 'pending' }) })
+    const deps = depsWith({ fake: provider.provider })
+    await postSerpTasks(deps, date, { ...UNLIMITED, promptIds: ids })
+    // 予算 0：1 回の呼び出しで 1 行だけ取りに行く
+    const options = { budgetMs: 0, promptIds: ids }
+    return { keywords, date, deps, provider, options }
+  }
+
+  it('カーソルを渡すと、前の呼び出しの続きの行から取りに行く', async () => {
+    const { keywords, date, deps, provider, options } = await threePendingKeywords()
+
+    const first = await collectSerpResults(deps, date, options)
+    const second = await collectSerpResults(deps, date, { ...options, after: first.cursor })
+    const third = await collectSerpResults(deps, date, { ...options, after: second.cursor })
+
+    expect(provider.fetched).toEqual(keywords)
+    expect([first.remaining, second.remaining, third.remaining]).toEqual([2, 1, 0])
+    expect(third.cursor).toBeNull()
+  })
+
+  it('1 回の取得ラウンドで全部の行を 1 回ずつ確かめ、未完了が残っていれば次の待ちに進む。上限の回数で止まる', async () => {
+    const { keywords, date, deps, provider, options } = await threePendingKeywords()
+    const names: string[] = []
+    const steps = {
+      run: async <T>(name: string, fn: () => Promise<T>) => {
+        names.push(name)
+        return fn()
+      },
+      sleep: async (name: string) => {
+        names.push(name)
+      },
+    }
+
+    const result = await waitAndCollectSerpResults(
+      steps,
+      (after) => collectSerpResults(deps, date, { ...options, after }),
+      { maxRounds: 2 },
+    )
+
+    expect(result).toEqual({ rounds: 2, pending: 3 })
+    expect(provider.fetched).toEqual([...keywords, ...keywords])
+    expect(names).toEqual([
+      'wait-1',
+      'collect-1-1',
+      'collect-1-2',
+      'collect-1-3',
+      'wait-2',
+      'collect-2-1',
+      'collect-2-2',
+      'collect-2-3',
+    ])
+  })
+
+  it('未完了の行がなくなったら、上限より前に止まる', async () => {
+    const { date, deps, options } = await threePendingKeywords()
+    const ready = depsWith({
+      fake: recordingProvider('fake', {
+        fetch: async () => ({ status: 'ready', serp: knownSerp, raw: {} }),
+      }).provider,
+    })
+    const steps = {
+      run: async <T>(_name: string, fn: () => Promise<T>) => fn(),
+      sleep: async () => {},
+    }
+    void deps
+
+    const result = await waitAndCollectSerpResults(
+      steps,
+      (after) => collectSerpResults(ready, date, { ...options, after }),
+      { maxRounds: 12 },
+    )
+
+    expect(result).toEqual({ rounds: 1, pending: 0 })
   })
 })
 

@@ -5,6 +5,7 @@ import {
   postSerpTasks,
   type SerpDeps,
   tokyoDate,
+  waitAndCollectSerpResults,
 } from '@llmo/runner'
 import { db } from '@/lib/db'
 import { getLlmPolicy } from '@/lib/llm'
@@ -72,28 +73,19 @@ export const serpDailyFunction = inngest.createFunction(
       if (posted.remaining === 0) break
     }
 
-    let pending = 0
-    for (let round = 1; round <= MAX_COLLECT_ROUNDS; round += 1) {
-      await step.sleep(`wait-${round}`, WAIT_BETWEEN_COLLECTS)
-      pending = await collectRound(step, date, round)
-      if (pending === 0) break
-    }
+    // 待って取りに行く、を最大 MAX_COLLECT_ROUNDS 回。1 回のラウンドではカーソルを進めて全部の行を 1 回ずつ確かめる
+    const { rounds, pending } = await waitAndCollectSerpResults(
+      {
+        run: async (name, fn) => (await step.run(name, fn)) as Awaited<ReturnType<typeof fn>>,
+        sleep: (name) => step.sleep(name, WAIT_BETWEEN_COLLECTS),
+      },
+      (after) => collectSerpResults(serpDeps(), date, { budgetMs: SLICE_BUDGET_MS, after }),
+      { maxRounds: MAX_COLLECT_ROUNDS },
+    )
 
     const gaveUp = await step.run('give-up', () => giveUpSerpTasks(db, date))
-    const summary = { date, claimed, gaveUp }
+    const summary = { date, claimed, rounds, pending, gaveUp }
     logger.info('Google の検索が終わりました', summary)
     return summary
   },
 )
-
-type Step = Parameters<Parameters<typeof inngest.createFunction>[1]>[0]['step']
-
-/** 結果を 1 回取りに行く（予算で区切りながら全件）。まだ結果が出ていない数を返す */
-async function collectRound(step: Step, date: string, round: number): Promise<number> {
-  for (let slice = 1; ; slice += 1) {
-    const collected = await step.run(`collect-${round}-${slice}`, () =>
-      collectSerpResults(serpDeps(), date, { budgetMs: SLICE_BUDGET_MS }),
-    )
-    if (collected.remaining === 0) return collected.pending
-  }
-}

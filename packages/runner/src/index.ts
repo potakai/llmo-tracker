@@ -22,13 +22,17 @@ export {
 export { listScheduledBrands, type ScheduledBrand } from './scheduled-brands'
 export { bestOrganicRank, type SerpBrand, toEntityRows } from './serp-save'
 export {
+  type CollectOptions,
+  type CollectResult,
   claimDailySerpTasks,
   claimSerpTasks,
   collectSerpResults,
   giveUpSerpTasks,
   postSerpTasks,
   type SerpDeps,
+  type SerpJobSteps,
   type SerpSliceOptions,
   type SerpTarget,
+  waitAndCollectSerpResults,
 } from './serp-tasks'
 export { isSameSite } from './site'
