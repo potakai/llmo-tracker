@@ -128,22 +128,34 @@ function billableSearchCount(
 
 /**
  * 1 回の回答で使う量の目安（毎朝の計測の費用の見積もりに使う）。
- * 実測ではなく仮の値なので、本物の AI の計測がたまったら、回答の平均に合わせて直す。
- * - ChatGPT：Web 検索で読んだ内容が入力のトークンとして課金されるので、入力が多い
- * - Gemini：検索の結果は入力のトークンに入らない。1 回答で 2 回ほど検索する
+ * 出典：2026-11-21 の本番の計測の実測。OIS の 1 回目の本物の計測（AI ごとに 25 回答）の実際の請求が
+ * - ChatGPT 約 $0.48（1 回答 約 $0.019）
+ * - Gemini 約 $0.17（1 回答 約 $0.007。検索は月 5,000 回の無料枠に収まり、請求なし）
+ * だったので、この料金表で計算すると 1 回答あたりの額がそれに合うトークン数にしている。
+ * 請求は AI ごとの合計しかわからないので、入力と出力の内訳は推定。
+ * Gemini の検索の回数（2 回）は実測ではなく仮の値で、無料枠を超えたときの額にだけ効く
  */
 const TYPICAL_ANSWER_USAGE: Record<
   ProviderId,
   { inputTokens: number; outputTokens: number; searchCount: number }
 > = {
-  openai: { inputTokens: 8_000, outputTokens: 1_000, searchCount: 1 },
-  gemini: { inputTokens: 100, outputTokens: 1_500, searchCount: 2 },
+  openai: { inputTokens: 6_000, outputTokens: 1_000, searchCount: 1 },
+  gemini: { inputTokens: 100, outputTokens: 1_850, searchCount: 2 },
 }
 
 /**
- * 1 回答あたりの費用の目安。検索の無料枠は考えない（多めの見積もり）。
- * 料金表にないモデルは null
+ * 1 回答あたりの費用の目安。料金表にないモデルは null。
+ * 検索の無料枠があるモデル（Gemini）は、ふだんは無料枠に収まる前提で検索を $0 にする。
+ * `beyondFreeSearches` を true にすると、無料枠を使い切ったあとの額（検索の分も入る）を出す
  */
-export function typicalAnswerCostUsd(key: PriceKey): number | null {
-  return estimateCostUsd({ ...key, ...TYPICAL_ANSWER_USAGE[key.provider] })
+export function typicalAnswerCostUsd(
+  key: PriceKey & { beyondFreeSearches?: boolean },
+): number | null {
+  const { beyondFreeSearches = false, ...priceKey } = key
+  return estimateCostUsd({
+    ...priceKey,
+    ...TYPICAL_ANSWER_USAGE[key.provider],
+    // 当月に使った検索の回数。0 なら無料枠がまるごと残っている、無限大なら使い切っている
+    searchesUsedThisMonth: beyondFreeSearches ? Number.POSITIVE_INFINITY : 0,
+  })
 }

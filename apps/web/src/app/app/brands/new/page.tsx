@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { BrandForm } from '@/components/brand-form'
 import { getLlmPolicy } from '@/lib/llm'
-import { perAnswerCostUsd } from '@/server/cost-estimate'
+import { perAnswerCosts } from '@/server/cost-estimate'
 import { isDemoOrganization } from '@/server/demo'
 import { requireViewerWithOrg } from '@/server/viewer'
 
@@ -29,7 +29,7 @@ export default async function NewBrandPage() {
       ) : (
         <BrandForm
           submitLabel="追加して計測画面へ"
-          perAnswerUsd={isLive ? perAnswerCostUsd() : undefined}
+          answerCosts={isLive ? perAnswerCosts() : undefined}
         />
       )}
     </div>

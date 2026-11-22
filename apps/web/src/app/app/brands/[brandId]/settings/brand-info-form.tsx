@@ -2,8 +2,8 @@
 
 import { type FormEvent, useState } from 'react'
 import { DailyCostEstimate } from '@/components/daily-cost-estimate'
-import type { ProviderKey } from '@/components/labels'
 import { api } from '@/lib/api-client'
+import type { AnswerCosts } from '@/lib/daily-cost'
 import { splitList } from '@/lib/form-lists'
 import { useAction } from '@/lib/use-action'
 
@@ -23,7 +23,7 @@ type BrandInfoFormProps = {
   /** 有効な質問の数（費用の目安に使う） */
   activePromptCount: number
   /** 本物の AI で計測する組織なら、1 回答あたりの費用の目安。あれば毎朝の費用の目安を出す */
-  perAnswerUsd?: Record<ProviderKey, number | null>
+  answerCosts?: AnswerCosts
 }
 
 /** フォームの今の入力から、費用の目安に使う値を読む（保存する前から目安が変わるように） */
@@ -40,7 +40,7 @@ export function BrandInfoForm({
   brand,
   readOnly,
   activePromptCount,
-  perAnswerUsd,
+  answerCosts,
 }: BrandInfoFormProps) {
   const { run, error, pending } = useAction()
   const [saved, setSaved] = useState(false)
@@ -181,12 +181,12 @@ export function BrandInfoForm({
             </span>
           </div>
         </fieldset>
-        {perAnswerUsd && (
+        {answerCosts && (
           <DailyCostEstimate
             samplesPerPrompt={draft.samplesPerPrompt}
             promptCount={activePromptCount}
             providers={draft.providers}
-            perAnswerUsd={perAnswerUsd}
+            costs={answerCosts}
           />
         )}
 

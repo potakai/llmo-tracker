@@ -2,7 +2,7 @@ import { prompt } from '@llmo/db'
 import { and, asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { loadBrandForPage } from '@/server/brand-page'
-import { perAnswerCostUsd } from '@/server/cost-estimate'
+import { perAnswerCosts } from '@/server/cost-estimate'
 import { inOrganization } from '@/server/queries/tenant'
 import { MAX_ACTIVE_PROMPTS, MAX_COMPETITORS } from '@/server/schemas/brand'
 import { BrandInfoForm } from './brand-info-form'
@@ -35,7 +35,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ brand
       <BrandInfoForm
         readOnly={isDemo}
         activePromptCount={brand.prompts.length}
-        perAnswerUsd={llmMode === 'live' ? perAnswerCostUsd() : undefined}
+        answerCosts={llmMode === 'live' ? perAnswerCosts() : undefined}
         brand={{
           id: brand.id,
           name: brand.name,

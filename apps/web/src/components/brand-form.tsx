@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { type FormEvent, useState } from 'react'
 import { api } from '@/lib/api-client'
+import type { AnswerCosts } from '@/lib/daily-cost'
 import { splitLines, splitList } from '@/lib/form-lists'
 import { DailyCostEstimate } from './daily-cost-estimate'
 import type { ProviderKey } from './labels'
@@ -20,11 +21,11 @@ export type Issue = { path?: (string | number)[]; message: string }
  */
 export function BrandForm({
   submitLabel,
-  perAnswerUsd,
+  answerCosts,
 }: {
   submitLabel: string
   /** 本物の AI で計測する組織なら、1 回答あたりの費用の目安。あれば費用の目安を出す */
-  perAnswerUsd?: Record<ProviderKey, number | null>
+  answerCosts?: AnswerCosts
 }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
@@ -164,12 +165,12 @@ export function BrandForm({
           placeholder={'会計ソフト おすすめ\nクラウド会計 比較'}
         />
       </Field>
-      {perAnswerUsd && (
+      {answerCosts && (
         <DailyCostEstimate
           samplesPerPrompt={DEFAULT_SAMPLES_PER_PROMPT}
           promptCount={promptCount}
           providers={DEFAULT_PROVIDERS}
-          perAnswerUsd={perAnswerUsd}
+          costs={answerCosts}
         />
       )}
       <Issues issues={generalIssues} />

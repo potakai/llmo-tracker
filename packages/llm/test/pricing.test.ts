@@ -136,15 +136,30 @@ describe('hasFreeSearchTier', () => {
 })
 
 describe('typicalAnswerCostUsd', () => {
-  it('1 回答あたりの目安を、よくあるトークン数と検索回数で料金表から出す（無料枠は考えない）', () => {
-    // ChatGPT：入力 8,000 × $0.75/M + 出力 1,000 × $4.50/M + 検索 1 回 × $10/1k
+  it('1 回答あたりの目安は、本番の実測（ChatGPT 約 $0.019、Gemini 約 $0.007）に合う', () => {
+    // ChatGPT：入力 6,000 × $0.75/M + 出力 1,000 × $4.50/M + 検索 1 回 × $10/1k
+    const openai = typicalAnswerCostUsd({ provider: 'openai', model: 'gpt-5.4-mini', at: NOV_2026 })
+    expect(openai).toBeCloseTo(0.0045 + 0.0045 + 0.01, 6)
+    expect(openai).toBeCloseTo(0.019, 3)
+    // Gemini：入力 100 × $0.75/M + 出力 1,850 × $3.75/M。検索は無料枠に収まるので $0
+    const gemini = typicalAnswerCostUsd({
+      provider: 'gemini',
+      model: 'gemini-3.8-flash',
+      at: NOV_2026,
+    })
+    expect(gemini).toBeCloseTo(0.000075 + 0.0069375, 6)
+    expect(gemini).toBeCloseTo(0.007, 3)
+  })
+
+  it('検索の無料枠を使い切ったあとは、検索の分も入る（無料枠のない ChatGPT は変わらない）', () => {
+    const beyond = { at: NOV_2026, beyondFreeSearches: true }
+    // Gemini：上の額 + 検索 2 回 × $14/1k
     expect(
-      typicalAnswerCostUsd({ provider: 'openai', model: 'gpt-5.4-mini', at: NOV_2026 }),
-    ).toBeCloseTo(0.006 + 0.0045 + 0.01, 6)
-    // Gemini：入力 100 × $0.75/M + 出力 1,500 × $3.75/M + 検索 2 回 × $14/1k
+      typicalAnswerCostUsd({ provider: 'gemini', model: 'gemini-3.8-flash', ...beyond }),
+    ).toBeCloseTo(0.000075 + 0.0069375 + 0.028, 5) // 費用は小数 6 桁に丸める
     expect(
-      typicalAnswerCostUsd({ provider: 'gemini', model: 'gemini-3.8-flash', at: NOV_2026 }),
-    ).toBeCloseTo(0.000075 + 0.005625 + 0.028, 6)
+      typicalAnswerCostUsd({ provider: 'openai', model: 'gpt-5.4-mini', ...beyond }),
+    ).toBeCloseTo(0.019, 6)
   })
 
   it('単価が変わる日を過ぎると、新しい単価で出す', () => {
@@ -153,7 +168,7 @@ describe('typicalAnswerCostUsd', () => {
       model: 'gemini-3.8-flash',
       at: new Date('2027-01-01T00:00:00Z'),
     })
-    expect(cost).toBeCloseTo(0.00015 + 0.01125 + 0.028, 6)
+    expect(cost).toBeCloseTo(0.00015 + 0.013875, 6)
   })
 
   it('料金表にないモデルは null', () => {
