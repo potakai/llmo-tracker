@@ -70,6 +70,12 @@ test('新規登録 → 組織 → ブランド登録 → 計測 まで通る', a
   await expect(page.getByRole('cell', { name: '完了' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(/直近7日、AI の回答 20 件のうち/)).toBeVisible()
 
+  // 改善のヒントは、回答が集まるまで待つ（1 日 20 件なので、あと 30 件は 2 日ほど）
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(page.getByText(/データが集まるまでお待ちください（あと 2 日ほど）/)).toBeVisible()
+  await expect(page.getByText(/いまは 20 件/)).toBeVisible()
+  await page.getByRole('link', { name: '計測結果' }).click()
+
   // キーワードの質問はまだないが、絞り込んでも種類ごとの比較は出る
   await page.getByRole('link', { name: 'キーワード', exact: true }).click()
   await expect(page).toHaveURL(/kind=keyword/)
@@ -92,6 +98,81 @@ test.describe('デモアカウントでログイン済み', () => {
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
+  })
+
+  test('「改善のヒント」タブで、4 種類の施策と、その根拠が見られる', async ({ page }) => {
+    await page.goto('/app')
+    await page.getByRole('link', { name: '改善のヒント' }).click()
+    await expect(page).toHaveURL(/\/hints$/)
+    await expect(page.getByRole('link', { name: '改善のヒント' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await expect(page.getByText(/次に検討できることを、優先度の高い順に並べました/)).toBeVisible()
+
+    const hints = page.getByRole('list', { name: '改善のヒント' }).getByRole('article')
+    await expect(hints).toHaveCount(5)
+    // デモデータでは 4 種類すべてが出る
+    await expect(
+      page.getByRole('heading', { name: /が、競合の名前が出た回答でよく参考元になっています/ }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /への回答に、御社の名前が/ }).first(),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /否定的と判定された回答があります/ }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /参考元として表示される回答が少なめです/ }),
+    ).toBeVisible()
+    // 「すすめられた」「すすめられていない」とは書かない（数えているのは名前が出たかどうか。
+    // 質問文そのものに「おすすめ」が入ることはあるので、言い回しで確かめる）
+    await expect(hints.getByText(/すすめられ/)).toHaveCount(0)
+    // 否定的な箇所を、前後の文とあわせて見せる
+    const negative = hints.filter({ hasText: '否定的と判定された回答があります' })
+    await expect(
+      negative.getByText('サンプル会計：サポートの返信が遅いという声もあります。', { exact: true }),
+    ).toBeVisible()
+    // 抜き出した箇所は「確認の手がかり」と明示し、判断は回答全体を見るように案内する
+    await expect(negative.getByText(/^確認の手がかり/)).toBeVisible()
+    await expect(
+      negative.getByText(/件は、確認の手がかりになる箇所を自動では抜き出せませんでした/),
+    ).toBeVisible()
+    await expect(
+      negative.getByText(/最終的な判断は、下の「回答を見る」から回答全体を見て行ってください/),
+    ).toBeVisible()
+    // 質問のカードは、今回の計測で名前が出た割合を比べた事実として書く
+    await expect(
+      hints
+        .getByText(/この質問への今回の計測の回答では、御社の名前が出た割合は.+より低めでした/)
+        .first(),
+    ).toBeVisible()
+    // サイトのカードも、今回の計測で観測したこととして書く
+    await expect(
+      hints.getByText(
+        '今回の計測では、このサイトが競合の名前と同じ回答に参考元として表示されました。',
+      ),
+    ).toBeVisible()
+    // 自社サイトのカードで比べる相手は、御社以外のサイト
+    await expect(hints.getByText(/（御社以外でいちばん多かった .+ は \d+%）/)).toBeVisible()
+    // 自社サイトのカードは「参考元として表示された」という観測だけを書く
+    await expect(
+      hints.getByText('今回の計測では、参考元として表示されたのは、主に御社以外のサイトでした。'),
+    ).toBeVisible()
+    // 自社サイトの割合は、何のうちの割合かを書く
+    await expect(hints.getByText(/今回の計測で参考元が表示された回答 \d+ 件のうち/)).toBeVisible()
+
+    // 根拠を開くと、実際の AI の回答が見られる
+    const site = hints.filter({ hasText: 'よく参考元になっています' })
+    await site.getByText(/が参考元になった回答を見る/).click()
+    const firstAnswer = site.locator('details details').first()
+    await firstAnswer.locator('summary').click()
+    await expect(firstAnswer.getByText('会計ソフトランキング')).toBeVisible()
+
+    // 自社サイトの施策の根拠は、参考元として表示されたサイトの一覧
+    const own = hints.filter({ hasText: '参考元として表示される回答が少なめです' })
+    await own.getByText('参考元として表示されたサイトを見る').click()
+    await expect(own.getByText('自社サイト')).toBeVisible()
   })
 
   test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
@@ -181,4 +262,29 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await expect(page.getByText('保存しました')).toBeVisible()
   await page.reload()
   await expect(page.getByLabel('1 回の計測で同じ質問を聞く回数')).toHaveValue('3')
+
+  // 改善のヒント：今の設定では 14 日で 50 件に届かないなら、そう伝える
+  // （質問 2 つ × ChatGPT だけ × 1 回 = 1 日 2 件）
+  await page.getByLabel('1 回の計測で同じ質問を聞く回数').selectOption('1')
+  await page.getByRole('checkbox', { name: 'Gemini' }).uncheck()
+  await page.getByRole('button', { name: '設定を保存' }).click()
+  await expect(page.getByText('保存しました')).toBeVisible()
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(
+    page.getByText(/今の設定では、14日で 50 件に届きません（1 日あたり 2 件）/),
+  ).toBeVisible()
+
+  // 自動計測をオフにすると、日数ではなく、オフになっていることを伝える
+  // （案内の文の中にも「設定」へのリンクがあるので、タブから開く）
+  await page
+    .getByRole('navigation', { name: 'ブランドの画面' })
+    .getByRole('link', { name: '設定' })
+    .click()
+  await page.getByRole('checkbox', { name: '毎日自動で計測する' }).uncheck()
+  await page.getByRole('button', { name: '設定を保存' }).click()
+  await expect(page.getByText('保存しました')).toBeVisible()
+  await page.getByRole('link', { name: '改善のヒント' }).click()
+  await expect(
+    page.getByText(/自動では回答が増えません。.*「今すぐ計測」で、手動で増やせます/),
+  ).toBeVisible()
 })

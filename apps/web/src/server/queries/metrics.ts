@@ -18,7 +18,7 @@ import { countedResponses } from './sample-responses'
 import { inOrganization } from './tenant'
 
 /** run が「いつの計測か」：自動実行は対象日、手動実行は作成日（日本時間） */
-const runDate = sql<string>`coalesce(${run.scheduledFor}, (${run.createdAt} at time zone 'Asia/Tokyo')::date)::text`
+export const runDate = sql<string>`coalesce(${run.scheduledFor}, (${run.createdAt} at time zone 'Asia/Tokyo')::date)::text`
 
 type Provider = 'openai' | 'gemini'
 export type SeriesKey = Provider | 'all'
@@ -65,7 +65,10 @@ function responsesOfKind(organizationId: string, brandId: string, kind: PromptKi
 }
 
 /** 回答の質問を結合する。run と同じブランドの質問に限る（別のブランドの質問の文面や種類を混ぜない） */
-const promptOfResponse = and(eq(prompt.id, response.promptId), eq(prompt.brandId, run.brandId))
+export const promptOfResponse = and(
+  eq(prompt.id, response.promptId),
+  eq(prompt.brandId, run.brandId),
+)
 
 /**
  * ダッシュボードの数字をまとめて返す。絞り込み（AI・種類・質問）はすべての数字に同じように効く。
