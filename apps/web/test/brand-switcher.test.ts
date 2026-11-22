@@ -2,7 +2,6 @@ import { brand as brandTable, organization, run } from '@llmo/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { db } from '@/lib/db'
-import { CURRENT_BRAND_COOKIE } from '@/server/current-brand'
 import { DEMO_METADATA } from '@/server/demo'
 import { listBrandsInOrganization, resolveHomeBrandId } from '@/server/queries/brands'
 import { TestClient } from './helpers'
@@ -30,7 +29,7 @@ const secondBrand = {
 }
 
 describe('ブランドの追加', () => {
-  it('2 社目を追加すると、別名・競合・質問の種類つきで保存され、そのブランドが今のブランドになる', async () => {
+  it('2 社目を追加すると、別名・競合・質問の種類つきで保存され、組織のブランドの一覧に入る', async () => {
     const { client, organizationId, first } = await setup()
 
     const created = await client.post('/api/brands', secondBrand)
@@ -42,13 +41,9 @@ describe('ブランドの追加', () => {
       ['おすすめの経費精算アプリは？', 'question'],
       ['経費精算 アプリ 比較', 'keyword'],
     ])
-    expect(client.cookie(CURRENT_BRAND_COOKIE)).toBe(added.id)
 
     const brands = await listBrandsInOrganization(organizationId)
     expect(brands.map((b) => b.id)).toEqual([first.id, added.id])
-    expect(await resolveHomeBrandId(organizationId, client.cookie(CURRENT_BRAND_COOKIE))).toBe(
-      added.id,
-    )
   })
 
   it('質問は文字列でも渡せる（種類は質問文になる）。文字列と種類つきで同じ文面なら 400', async () => {
@@ -78,57 +73,13 @@ describe('ブランドの追加', () => {
   })
 })
 
-describe('ブランドの切り替え', () => {
-  it('切り替えると、そのブランドを覚え、/app ではそこへ移動する', async () => {
-    const { client, organizationId, first } = await setup()
-    const second = (await client.post('/api/brands', secondBrand)).json.brand
-
-    const res = await client.request('PUT', '/api/current-brand', { brandId: first.id })
-    expect(res.status).toBe(200)
-    expect(res.json.brand).toEqual({ id: first.id, name: '1社目' })
-    expect(client.cookie(CURRENT_BRAND_COOKIE)).toBe(first.id)
-    expect(await resolveHomeBrandId(organizationId, client.cookie(CURRENT_BRAND_COOKIE))).toBe(
-      first.id,
-    )
-
-    await client.request('PUT', '/api/current-brand', { brandId: second.id })
-    expect(await resolveHomeBrandId(organizationId, client.cookie(CURRENT_BRAND_COOKIE))).toBe(
-      second.id,
-    )
-  })
-
-  it('他の組織のブランドには切り替えられない（404）。覚えているブランドも変わらない', async () => {
-    const a = await setup('ichiro')
-    const b = await setup('jiro')
-
-    const res = await a.client.request('PUT', '/api/current-brand', { brandId: b.first.id })
-    expect(res.status).toBe(404)
-    expect(res.json.error.code).toBe('NOT_FOUND')
-    expect(a.client.cookie(CURRENT_BRAND_COOKIE)).toBe(a.first.id)
-  })
-
-  it('ブランド ID が UUID でなければ 400、ログインしていなければ 401', async () => {
-    const { client } = await setup()
-    expect((await client.request('PUT', '/api/current-brand', { brandId: 'x' })).status).toBe(400)
-
-    const guest = new TestClient()
-    const res = await guest.request('PUT', '/api/current-brand', { brandId: crypto.randomUUID() })
-    expect(res.status).toBe(401)
-  })
-
-  it('デモの組織でも切り替えはできる（見るだけなので）', async () => {
-    const { client, organizationId, first } = await setup('demo-switch')
-    await db
-      .update(organization)
-      .set({ metadata: DEMO_METADATA })
-      .where(eq(organization.id, organizationId))
-
-    const res = await client.request('PUT', '/api/current-brand', { brandId: first.id })
-    expect(res.status).toBe(200)
-  })
-})
-
 describe('/app で移動するブランド（resolveHomeBrandId）', () => {
+  it('覚えているブランド（Cookie）が組織のものなら、そのブランド', async () => {
+    const { client, organizationId } = await setup('jiro')
+    const second = (await client.post('/api/brands', secondBrand)).json.brand
+    expect(await resolveHomeBrandId(organizationId, second.id)).toBe(second.id)
+  })
+
   it('覚えているブランドがない・壊れている・他の組織のものなら、最初に登録したブランド', async () => {
     const a = await setup('kenta')
     const b = await setup('saburo')

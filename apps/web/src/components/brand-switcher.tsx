@@ -2,30 +2,25 @@
 
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
-import { api } from '@/lib/api-client'
-import { createLatestOnlySaver } from '@/lib/latest-only-saver'
+import { useEffect, useRef } from 'react'
 
 type BrandOption = { id: string; name: string }
 
 type BrandSwitcherProps = {
   brands: BrandOption[]
-  /** Cookie に覚えているブランド（/app で開くブランド） */
-  rememberedBrandId: string | null
   /** デモの組織では「ブランドを追加」を出さない（追加は 403 になる） */
   canAddBrand: boolean
 }
 
 /**
  * ヘッダーのブランド切り替え。今のブランド名を押すと、組織のブランドの一覧と「ブランドを追加」が開く。
- * ブランドの画面を開いたら、そのブランドを「最後に見たブランド」として覚える（/app でそこへ移動する）
+ * 開いたブランドは proxy.ts が「最後に見たブランド」として Cookie に覚える（/app でそこへ移動する）
  */
-export function BrandSwitcher({ brands, rememberedBrandId, canAddBrand }: BrandSwitcherProps) {
+export function BrandSwitcher({ brands, canAddBrand }: BrandSwitcherProps) {
   const params = useParams<{ brandId?: string }>()
   const brandId = params.brandId
   const current = brands.find((b) => b.id === brandId)
   const menu = useRef<HTMLDetailsElement>(null)
-  useRememberBrand(current?.id, rememberedBrandId)
   useCloseOnOutsideClick(menu)
 
   const close = () => {
@@ -69,30 +64,6 @@ export function BrandSwitcher({ brands, rememberedBrandId, canAddBrand }: BrandS
       </div>
     </details>
   )
-}
-
-/** 今のブランドをサーバーに覚えてもらう（Cookie）。応答が ok でなければ保存できていないものとして扱う */
-async function saveCurrentBrand(brandId: string): Promise<boolean> {
-  try {
-    const res = await api['current-brand'].$put({ json: { brandId } })
-    if (!res.ok) console.warn('最後に見たブランドを覚えられませんでした', res.status)
-    return res.ok
-  } catch (error: unknown) {
-    console.warn('最後に見たブランドを覚えられませんでした', error)
-    return false
-  }
-}
-
-/**
- * 開いているブランドを、最後に見たブランドとして覚えてもらう。
- * 素早く切り替えても最後に開いたブランドが残るよう、保存は 1 つずつ順に行う（createLatestOnlySaver）。
- * 覚えられなくても画面はそのまま使える（/app で開くブランドが変わらないだけ）ので、画面は止めない
- */
-function useRememberBrand(brandId: string | undefined, rememberedBrandId: string | null) {
-  const [saver] = useState(() => createLatestOnlySaver(saveCurrentBrand, rememberedBrandId))
-  useEffect(() => {
-    if (brandId) void saver.request(brandId)
-  }, [brandId, saver])
 }
 
 /** メニューの外を押すか Esc で閉じる */

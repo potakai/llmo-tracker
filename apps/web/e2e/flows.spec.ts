@@ -192,6 +192,7 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
 
 test('ブランドを追加して、ヘッダーから切り替えられる。/app では最後に見たブランドが開く', async ({
   page,
+  browser,
 }) => {
   await page.goto('/signup')
   await page.getByLabel('お名前').fill('代理店テスト')
@@ -222,19 +223,52 @@ test('ブランドを追加して、ヘッダーから切り替えられる。/a
   await expect(page.getByLabel('「経費精算 比較」の種類')).toHaveValue('keyword')
   await expect(page.getByLabel('「おすすめの経費精算アプリは？」の種類')).toHaveValue('question')
 
-  // ヘッダーから 1 社目に切り替える
+  // ヘッダーから 1 社目に切り替える（画面の中の移動）
   await switcher.click()
-  const remembered = page.waitForResponse(
-    (res) => res.request().method() === 'PUT' && res.url().endsWith('/api/current-brand'),
-  )
   await page
     .getByRole('list', { name: 'ブランドの一覧' })
     .getByRole('link', { name: 'クライアントA' })
     .click()
   await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
-  expect((await remembered).status()).toBe(200)
 
   // /app に来ると、最後に見たブランドが開く
+  await page.goto('/app')
+  await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
+
+  // 素早く A → B → C と開くと、最後に開いた C が残る
+  const created = await page.request.post('/api/brands', {
+    data: { name: 'クライアントC', prompts: ['おすすめの勤怠管理アプリは？'] },
+  })
+  expect(created.status()).toBe(201)
+  const brandC = ((await created.json()) as { brand: { id: string } }).brand.id
+  const brandIds = await page.evaluate(() =>
+    [...document.querySelectorAll('ul[aria-label="ブランドの一覧"] a')].map(
+      (a) => a.getAttribute('href') ?? '',
+    ),
+  )
+  const [hrefA, hrefB] = brandIds
+  await page.goto(hrefA!, { waitUntil: 'commit' })
+  await page.goto(hrefB!, { waitUntil: 'commit' })
+  await page.goto(`/app/brands/${brandC}`, { waitUntil: 'commit' })
+  await page.goto('/app')
+  await expect(page.getByRole('heading', { name: 'クライアントC' })).toBeVisible()
+
+  // 他の組織（デモ）のブランド ID が Cookie にあっても、/app では最初に登録したブランドが開く
+  // （本番モードではサインアップにも回数の制限があるので、新しくアカウントを作らずにこのテストの中で確かめる）
+  const demoContext = await browser.newContext({ storageState: DEMO_STATE })
+  const demoPage = await demoContext.newPage()
+  await demoPage.goto('/app')
+  await expect(demoPage).toHaveURL(/\/app\/brands\//)
+  const demoBrandId = new URL(demoPage.url()).pathname.split('/')[3]
+  await demoContext.close()
+
+  // 他の組織のブランドの画面は 404。ただし、開いたブランドとして Cookie には書かれる
+  const res = await page.goto(`/app/brands/${demoBrandId}`)
+  expect(res?.status()).toBe(404)
+  const cookies = await page.context().cookies()
+  expect(cookies.find((c) => c.name === 'llmo_current_brand')?.value).toBe(demoBrandId)
+
+  // /app では Cookie のブランドを組織の中で確かめて、最初に登録したブランドを開く
   await page.goto('/app')
   await expect(page.getByRole('heading', { name: 'クライアントA' })).toBeVisible()
 })

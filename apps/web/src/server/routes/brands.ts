@@ -3,7 +3,6 @@ import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { db } from '@/lib/db'
 import type { OrgEnv } from '../context'
-import { rememberBrand } from '../current-brand'
 import { errors } from '../errors'
 import { getBrandMetrics } from '../queries/metrics'
 import { brandParams, createBrandInput, metricsQuery } from '../schemas/brand'
@@ -71,8 +70,6 @@ export const brandRoutes = new Hono<OrgEnv>()
       return created.id
     })
 
-    // 追加したブランドを今のブランドにする（/app で開くと、このブランドの画面になる）
-    rememberBrand(c, brandId)
     return c.json({ brand: await findBrandInOrg(organizationId, brandId) }, 201)
   })
 

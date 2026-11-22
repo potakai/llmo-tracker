@@ -5,7 +5,8 @@ import {
   prompt as promptTable,
   run as runTable,
 } from '@llmo/db'
-import { and, eq, exists, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, exists, isNull } from 'drizzle-orm'
+import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { createScheduledRun } from './create-run'
 
 /** organization.metadata に `{"demo":true}` が入っている組織はデモ（閲覧専用） */
@@ -64,39 +65,14 @@ export async function createDailyRuns(db: Db, date: string): Promise<DailyRunsRe
     else result.skipped += 1
   }
 
-  result.cancelled = await cancelRunsOfUnscheduledBrands(db, date)
+  // 拾い直す前に自動計測がオフにされた分は、配信せずに取り消す（届いても executeRun が取り消すが、先に枠を空ける）
+  result.cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.scheduledFor, date))
   const queued = await db
     .select({ id: runTable.id })
     .from(runTable)
     .where(and(eq(runTable.scheduledFor, date), eq(runTable.status, 'queued')))
   result.toDispatch = queued.map((r) => r.id)
   return result
-}
-
-/**
- * その日の自動 run のうち、まだ queued で、ブランドの自動計測がオフになっているものを取り消す。
- * 朝のジョブの再試行で拾い直すまでのあいだにオフにされた分。取り消すと「1 ブランドで同時に動く実行は
- * 1 つまで」の枠が空くので、手動の計測もできるようになる。動き出した（running の）run はそのまま
- */
-async function cancelRunsOfUnscheduledBrands(db: Db, date: string): Promise<string[]> {
-  const rows = await db
-    .update(runTable)
-    .set({ status: 'cancelled', cancelReason: 'schedule_disabled', finishedAt: sql`now()` })
-    .where(
-      and(
-        eq(runTable.scheduledFor, date),
-        eq(runTable.status, 'queued'),
-        inArray(
-          runTable.brandId,
-          db
-            .select({ id: brandTable.id })
-            .from(brandTable)
-            .where(eq(brandTable.scheduleEnabled, false)),
-        ),
-      ),
-    )
-    .returning({ id: runTable.id })
-  return rows.map((r) => r.id)
 }
 
 /** 日本時間での日付（YYYY-MM-DD）。自動実行の「何日分の計測か」に使う */

@@ -18,6 +18,7 @@ import {
 } from '@llmo/llm'
 import { and, eq, gte, inArray, isNull, notLike, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
+import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
 
 // DB の provider enum と LLM 側の ProviderId がずれたらここで型エラーになる
@@ -139,6 +140,13 @@ export async function executeRunSlice(
   }
   const { providers, extractor } =
     'llmFor' in deps ? deps.llmFor(target.brand.organizationId) : deps
+
+  // 朝のジョブの配信ステップだけが再試行されると、自動計測をオフにする前に作った自動 run が届く。
+  // queued から running に移す前に確かめて、オフなら実行せずに取り消す（手動の run はオフでも実行する）
+  const cancelled = await cancelScheduledRunsOfDisabledBrands(db, eq(runTable.id, runId))
+  if (cancelled.length > 0) {
+    return { done: true, summary: await summarizeFinished(db, runId, 'cancelled') }
+  }
 
   // 読んだあとに取り消されていたら動かさない（取り消した run を running に戻さない）
   const [started] = await db

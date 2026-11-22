@@ -1,7 +1,14 @@
 import { brand as brandTable, organization, prompt, run } from '@llmo/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { createDailyRuns, createManualRun, executeRun, isDemoMetadata, tokyoDate } from '../src'
+import {
+  createDailyRuns,
+  createManualRun,
+  executeRun,
+  executeRunSlice,
+  isDemoMetadata,
+  tokyoDate,
+} from '../src'
 import { countingProviders, db, extractor, seedBrand } from './fixtures'
 
 // テストどうしで日付がぶつからないように、テストごとに別の日を使う
@@ -169,5 +176,66 @@ describe('自動計測をオフにしたあとの、朝のジョブの再試行'
     expect(retry.cancelled).not.toContain(offRunId)
     const [offRow] = await db.select({ status: run.status }).from(run).where(eq(run.id, offRunId))
     expect(offRow?.status).toBe('running')
+  })
+})
+
+describe('自動計測をオフにしたあと、朝のジョブの配信ステップだけが再試行された', () => {
+  /**
+   * Inngest は成功したステップ（create-daily-runs）の結果を覚えていて、再試行では作り直さない。
+   * なので、オフにする前に作った toDispatch がそのまま配信される。それを executeRun が受け取る
+   */
+  async function dispatchedAfterTurnedOff() {
+    const { brand } = await seedBrand({ samplesPerPrompt: 1 })
+    const memoized = await createDailyRuns(db, nextDate())
+    const runId = memoized.toDispatch.find(
+      (id) => memoized.created.find((c) => c.runId === id)?.brandId === brand.id,
+    )!
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+    return { brand, runId }
+  }
+
+  it('自動 run は AI に聞かず、取り消し（理由：自動計測がオフ）になる', async () => {
+    const { runId } = await dispatchedAfterTurnedOff()
+
+    const counting = countingProviders()
+    const summary = await executeRun({ db, providers: counting.providers, extractor }, runId)
+
+    expect(counting.calls).toEqual({ openai: 0, gemini: 0 })
+    expect(summary.status).toBe('cancelled')
+    const [row] = await db.select().from(run).where(eq(run.id, runId))
+    expect(row).toMatchObject({ status: 'cancelled', cancelReason: 'schedule_disabled' })
+    expect(row?.startedAt).toBeNull()
+    expect(row?.finishedAt).not.toBeNull()
+  })
+
+  it('取り消したあとは、手動の計測ができる', async () => {
+    const { brand, runId } = await dispatchedAfterTurnedOff()
+    await executeRun({ db, providers: countingProviders().providers, extractor }, runId)
+
+    expect(await createManualRun(db, brand.id)).toMatchObject({ status: 'queued' })
+  })
+
+  it('手動の run は、オフでも実行する', async () => {
+    const { brand } = await seedBrand({ samplesPerPrompt: 1 })
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+    const manual = await createManualRun(db, brand.id)
+
+    const counting = countingProviders()
+    const summary = await executeRun({ db, providers: counting.providers, extractor }, manual.id)
+    expect(summary.status).toBe('succeeded')
+    expect(counting.calls.openai + counting.calls.gemini).toBeGreaterThan(0)
+  })
+
+  it('動き出した自動 run は、途中でオフにしても最後まで実行する（区切って続きから再開する場合）', async () => {
+    const { brand } = await seedBrand({ samplesPerPrompt: 1 })
+    const memoized = await createDailyRuns(db, nextDate())
+    const runId = memoized.created.find((c) => c.brandId === brand.id)!.runId
+    const deps = { db, providers: countingProviders().providers, extractor }
+    // 最初の回は予算 0 で、running にしたところで区切る
+    expect(await executeRunSlice(deps, runId, { budgetMs: 0 })).toEqual({ done: false })
+    await db.update(brandTable).set({ scheduleEnabled: false }).where(eq(brandTable.id, brand.id))
+
+    const summary = await executeRun(deps, runId)
+    expect(summary.status).toBe('succeeded')
   })
 })

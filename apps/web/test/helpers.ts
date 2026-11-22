@@ -67,11 +67,6 @@ export class TestClient {
     return { status: res.status, json }
   }
 
-  /** ブラウザが覚えている Cookie の値（なければ undefined） */
-  cookie(name: string) {
-    return this.cookies.get(name)
-  }
-
   get = (path: string) => this.request('GET', path)
   post = (path: string, body: unknown) => this.request('POST', path, body)
 
