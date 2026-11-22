@@ -291,12 +291,19 @@ function findNegativeHints(input: HintInput): NegativeHint[] {
     findNegativePassage(r.answerText ?? '', brandNames, otherNames),
   )
   const located = found.filter((p) => p !== null)
-  // 箇所を特定できなかった回答は、回答全体を見てもらうので、根拠の先頭に並べる
-  const unlocatedFirst = [
-    ...negatives.filter((_, i) => found[i] === null),
-    ...negatives.filter((_, i) => found[i] !== null),
-  ]
-  const passages = [...new Map(located.map((p) => [p.focus, p])).values()].slice(0, MAX_PASSAGES)
+  // 画面に出す抜粋（同じ箇所は 1 つにまとめる）と、その元の回答
+  const shown = new Map<string, { passage: NegativePassage; response: HintResponse }>()
+  for (const [i, passage] of found.entries()) {
+    const response = negatives[i]
+    if (!passage || !response || shown.has(passage.focus)) continue
+    if (shown.size >= MAX_PASSAGES) break
+    shown.set(passage.focus, { passage, response })
+  }
+  const passages = [...shown.values()].map((s) => s.passage)
+  // 根拠は、抜粋の元の回答（必ず入れる）→ 箇所を特定できなかった回答（回答全体を見てもらう）→ 残り
+  const sources = [...shown.values()].map((s) => s.response)
+  const unlocatedResponses = negatives.filter((_, i) => found[i] === null)
+  const evidenceOrder = [...new Set([...sources, ...unlocatedResponses, ...negatives])]
   return [
     {
       kind: 'negative',
@@ -308,7 +315,7 @@ function findNegativeHints(input: HintInput): NegativeHint[] {
         responses: withBrand.length,
         gap: rate(negatives.length, withBrand.length),
       }),
-      evidenceResponseIds: evidenceIds(unlocatedFirst),
+      evidenceResponseIds: evidenceIds(evidenceOrder),
     },
   ]
 }

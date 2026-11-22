@@ -58,7 +58,7 @@ function siteText(hint: SiteHint): HintText {
         )}
       </>
     ),
-    why: 'AI がこの分野の会社の名前を挙げるときに、参考にしているサイトのひとつです。',
+    why: '今回の計測では、このサイトが競合の名前と同じ回答に参考元として表示されました。',
     next: `${hint.domain} に御社の情報を載せてもらえないか、問い合わせることを検討できます。載ったあとに御社の名前が出る回答が増えたかどうかは、この画面で確かめられます。`,
     evidenceLabel: `${hint.domain} が参考元になった回答を見る`,
   }
@@ -135,7 +135,7 @@ function ownSiteText(hint: OwnSiteHint): HintText {
     now: (
       <>
         今回の計測で参考元が表示された回答 <Num>{hint.responses} 件</Num>のうち、{hint.domain}{' '}
-        が含まれていたのは <Num>{percent(hint.ownRate)}</Num> でした（いちばん多かった{' '}
+        が含まれていたのは <Num>{percent(hint.ownRate)}</Num> でした（御社以外でいちばん多かった{' '}
         {hint.topDomain} は {percent(hint.topRate)}）。
       </>
     ),

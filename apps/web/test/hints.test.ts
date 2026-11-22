@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildHints,
+  EVIDENCE_LIMIT,
   HINT_WINDOW_DAYS,
   type HintInput,
   type HintResponse,
@@ -372,11 +373,33 @@ describe('AI が書いている気になる点', () => {
     )
     expect(hint).toMatchObject({ unlocatedResponses: 1 })
     expect(hint?.kind === 'negative' && hint.passages).toHaveLength(1)
-    // 回答全体を見てもらうので、特定できなかった回答を根拠の先頭に並べる
+    // 抜粋の元の回答を先に、そのあとに特定できなかった回答を並べる
     expect(hint?.kind === 'negative' && hint.evidenceResponseIds).toEqual([
-      negatives[1]?.id,
       negatives[0]?.id,
+      negatives[1]?.id,
     ])
+  })
+
+  it(`抜粋の元の回答は、特定できなかった回答が ${EVIDENCE_LIMIT} 件以上あっても、根拠の一覧に必ず入る`, () => {
+    // 新しい順に、特定できない回答 11 件、そのあとに抜粋が取れる回答 1 件（いちばん古い）
+    const unlocated = times(EVIDENCE_LIMIT + 1, {
+      brandMentioned: true,
+      sentiment: 'negative',
+      answerText: 'サンプル会計はクラウド型の会計ソフトです。',
+    })
+    const [located] = times(1, {
+      brandMentioned: true,
+      sentiment: 'negative',
+      answerText: NEGATIVE_TEXT,
+    })
+    const hint = hintsOf(input([...neutralFiller(), ...unlocated, located!])).find(
+      (h) => h.kind === 'negative',
+    )
+    expect(hint?.kind === 'negative' && hint.passages).toHaveLength(1)
+    const ids = hint?.kind === 'negative' ? hint.evidenceResponseIds : []
+    expect(ids).toHaveLength(EVIDENCE_LIMIT)
+    expect(ids[0]).toBe(located?.id)
+    expect(ids.slice(1)).toEqual(unlocated.slice(0, EVIDENCE_LIMIT - 1).map((r) => r.id))
   })
 
   it(`否定的な回答が ${MIN_NEGATIVE_RESPONSES - 1} 件だけなら出さない`, () => {
