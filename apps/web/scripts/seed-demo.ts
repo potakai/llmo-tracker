@@ -278,6 +278,8 @@ async function seedSerpResults(promptIds: string[], date: string) {
   const deps = {
     db,
     serp: {
+      // デモ組織は本物を使わない
+      modeFor: () => 'fake' as const,
       providerFor: (mode: 'live' | 'fake') => {
         if (mode !== 'fake') throw new Error('デモでは本物の DataForSEO を使いません')
         return fake

@@ -59,10 +59,18 @@ function recordingProvider(
   return { provider, posted, fetched }
 }
 
-function depsWith(providers: Partial<Record<SerpMode, SerpProvider>>): SerpDeps {
+/**
+ * テスト用の依存。modeFor は「その組織が今、本物を使ってよいか」（省略するとすべての組織に許可がある）。
+ * fake の行は、許可があってもフェイクのまま扱う
+ */
+function depsWith(
+  providers: Partial<Record<SerpMode, SerpProvider>>,
+  modeFor: (organizationId: string) => SerpMode = () => 'live',
+): SerpDeps {
   return {
     db,
     serp: {
+      modeFor,
       providerFor: (mode) => {
         const p = providers[mode]
         if (!p) throw new Error(`${mode} のプロバイダーは使わないはず`)
@@ -506,6 +514,73 @@ describe('本物の DataForSEO を使う組織', () => {
     expect(live.fetched).toEqual([liveKeyword])
     expect(fake.posted).toContain(fakeKeyword)
     expect(fake.posted).not.toContain(liveKeyword)
+  })
+})
+
+describe('本物の DataForSEO の許可がなくなった組織（頼む・取りに行く直前に確かめる）', () => {
+  /** live の行を作る。allowed の組織だけ本物を使ってよい */
+  async function liveRow(label: string) {
+    const keyword = uniqueKeyword(label)
+    const { brand, prompts } = await seedBrand({ keywords: [keyword] })
+    const date = nextDate()
+    const ids = keywordIds(prompts)
+    await claimSerpTasks(db, date, [{ promptId: ids[0]!, mode: 'live' }])
+    const revoked = (organizationId: string): SerpMode =>
+      organizationId === brand.organizationId ? 'fake' : 'live'
+    return { keyword, date, ids, revoked }
+  }
+
+  it('頼む前に許可がなくなったら、本物にもフェイクにも頼まず、理由を付けて終わらせる', async () => {
+    const { keyword, date, ids, revoked } = await liveRow('頼む前に取り消し')
+    const live = recordingProvider('live')
+    const fake = recordingProvider('fake')
+
+    await postSerpTasks(depsWith({ live: live.provider, fake: fake.provider }, revoked), date, {
+      ...UNLIMITED,
+      promptIds: ids,
+    })
+
+    expect(live.posted).not.toContain(keyword)
+    expect(fake.posted).not.toContain(keyword)
+    const [row] = await rowsOf(ids, date)
+    expect(row).toMatchObject({ status: 'failed', taskId: null })
+    expect(row?.error).toMatch(/本物の DataForSEO を使う許可がなくなった/)
+  })
+
+  it('頼んだあとに許可がなくなったら、保存した本物の task ID で取りに行かず、フェイクにも渡さない', async () => {
+    const { keyword, date, ids, revoked } = await liveRow('取りに行く前に取り消し')
+    const live = recordingProvider('live')
+    const fake = recordingProvider('fake')
+    const options = { ...UNLIMITED, promptIds: ids }
+    await postSerpTasks(depsWith({ live: live.provider }), date, options)
+    const [posted] = await rowsOf(ids, date)
+    expect(posted?.taskId).toBeTruthy()
+
+    await collectSerpResults(
+      depsWith({ live: live.provider, fake: fake.provider }, revoked),
+      date,
+      options,
+    )
+
+    expect(live.fetched).not.toContain(keyword)
+    expect(fake.fetched).not.toContain(keyword)
+    const [row] = await rowsOf(ids, date)
+    expect(row).toMatchObject({ status: 'failed', taskId: posted?.taskId })
+    expect(row?.error).toMatch(/本物の DataForSEO を使う許可がなくなった/)
+  })
+
+  it('許可が続いていれば、live の行は本物で頼んで取りに行く', async () => {
+    const { keyword, date, ids } = await liveRow('許可あり')
+    const live = recordingProvider('live')
+    const deps = depsWith({ live: live.provider })
+    const options = { ...UNLIMITED, promptIds: ids }
+
+    await postSerpTasks(deps, date, options)
+    await collectSerpResults(deps, date, options)
+
+    expect(live.posted).toEqual([keyword])
+    expect(live.fetched).toEqual([keyword])
+    expect((await rowsOf(ids, date))[0]?.status).toBe('succeeded')
   })
 })
 

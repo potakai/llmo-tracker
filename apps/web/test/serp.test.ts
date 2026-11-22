@@ -48,7 +48,8 @@ async function saveSerp(promptId: string, mode: SerpMode, date: string) {
   await claimSerpTasks(db, date, [{ promptId, mode }])
   const deps = {
     db,
-    serp: { providerFor: fixedProvider },
+    // その組織は、保存したモードをそのまま使ってよい（本物の許可がある）
+    serp: { modeFor: () => mode, providerFor: fixedProvider },
     extractorFor: () => createRuleBasedExtractor(),
   }
   const unlimited = { budgetMs: Number.POSITIVE_INFINITY, promptIds: [promptId] }

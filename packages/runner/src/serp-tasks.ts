@@ -17,11 +17,20 @@ import { extractAiOverview, type SerpBrand, saveSerpSuccess } from './serp-save'
 const DEFAULT_SERP_TIMEOUT_MS = 60_000
 const DEFAULT_SERP_CONCURRENCY = 4
 const MAX_ERROR_LENGTH = 1000
+/** 本物の DataForSEO の許可がなくなった live の行を終わらせるときの理由 */
+const LIVE_REVOKED_BEFORE_POST =
+  '本物の DataForSEO を使う許可がなくなったため、検索を頼まずに終わらせました'
+const LIVE_REVOKED_BEFORE_FETCH =
+  '本物の DataForSEO を使う許可がなくなったため、結果を取りに行かずに終わらせました'
 
 export type SerpDeps = {
   db: Db
-  /** 組織ごとに本物の DataForSEO とフェイクを使い分ける */
-  serp: Pick<SerpPolicy, 'providerFor'>
+  /**
+   * 組織ごとに本物の DataForSEO とフェイクを使い分ける。
+   * modeFor は、頼む・取りに行く直前に「その組織が今も本物を使ってよいか」を確かめるのに使う
+   * （行を作ったあとに SERP_MODE や LIVE_ORGANIZATION_IDS が変わっても、許可のない組織で本物を呼ばない）
+   */
+  serp: Pick<SerpPolicy, 'modeFor' | 'providerFor'>
   /** AI による概要から名前を抜き出す抽出器（組織ごと。AI の計測と同じもの） */
   extractorFor: (organizationId: string) => Extractor
   concurrency?: number
@@ -104,9 +113,15 @@ export async function postSerpTasks(
   const { db } = deps
   const deadline = Date.now() + options.budgetMs
   const rows = await db
-    .select({ id: serpResult.id, mode: serpResult.mode, keyword: promptTable.text })
+    .select({
+      id: serpResult.id,
+      mode: serpResult.mode,
+      keyword: promptTable.text,
+      organizationId: brandTable.organizationId,
+    })
     .from(serpResult)
     .innerJoin(promptTable, eq(promptTable.id, serpResult.promptId))
+    .innerJoin(brandTable, eq(brandTable.id, promptTable.brandId))
     .where(
       and(
         eq(serpResult.searchedOn, date),
@@ -130,6 +145,12 @@ export async function postSerpTasks(
         .returning({ id: serpResult.id })
       // ほかの呼び出しが先に頼み始めた
       if (!attempt) return
+      // 頼む直前に、今の許可を確かめる（row.mode だけで本物を選ばない）
+      if (!isModeAllowed(deps, row)) {
+        await markSerpFailed(db, row.id, LIVE_REVOKED_BEFORE_POST)
+        counts.failed += 1
+        return
+      }
       try {
         const posted = await deps.serp.providerFor(row.mode).postTask({
           keyword: row.keyword,
@@ -229,6 +250,11 @@ async function collectOne(
   brand: SerpBrand,
 ): Promise<'succeeded' | 'failed' | 'stillPending'> {
   const timeoutMs = deps.timeoutMs ?? DEFAULT_SERP_TIMEOUT_MS
+  // 取りに行く直前に、今の許可を確かめる。許可がなければ、保存した本物の task ID はどこにも渡さない
+  if (!isModeAllowed(deps, row)) {
+    await markSerpFailed(deps.db, row.id, LIVE_REVOKED_BEFORE_FETCH)
+    return 'failed'
+  }
   let fetched: FetchedTask
   try {
     fetched = await deps.serp.providerFor(row.mode).fetchTask({
@@ -301,6 +327,14 @@ export async function giveUpSerpTasks(db: Db, date: string): Promise<number> {
     .where(and(eq(serpResult.searchedOn, date), eq(serpResult.status, 'pending')))
     .returning({ id: serpResult.id })
   return rows.length
+}
+
+/**
+ * その行を、行のモードのまま扱ってよいか。live の行は、その組織が今も本物を使ってよいときだけ。
+ * fake の行は費用がかからないので、いつでもフェイクで扱う（あとから許可が付いても本物には切り替えない）
+ */
+function isModeAllowed(deps: SerpDeps, row: { mode: SerpMode; organizationId: string }): boolean {
+  return row.mode === 'fake' || deps.serp.modeFor(row.organizationId) === 'live'
 }
 
 async function markSerpFailed(db: Db, id: string, message: string) {
