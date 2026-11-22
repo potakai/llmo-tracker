@@ -182,6 +182,38 @@ test.describe('デモアカウントでログイン済み', () => {
     await expect(own.getByText('自社サイト')).toBeVisible()
   })
 
+  test('「Google との比較」タブで、キーワードごとに Google の結果と AI の結果を並べた表が見られる', async ({
+    page,
+  }) => {
+    await page.goto('/app')
+    await page.getByRole('link', { name: 'Google との比較' }).click()
+    await expect(page).toHaveURL(/\/google$/)
+    await expect(page.getByRole('link', { name: 'Google との比較' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+
+    const table = page.getByRole('table', { name: 'Google との比較' })
+    await expect(table).toBeVisible()
+    for (const header of [
+      'Google の検索順位（御社）',
+      'Google の AI による概要',
+      'AI による概要に出た名前',
+      'ChatGPTで名前が出た割合',
+      'Geminiで名前が出た割合',
+    ]) {
+      await expect(table.getByRole('columnheader', { name: header })).toBeVisible()
+    }
+    // デモのキーワードの質問は 2 つ。どちらも今日の検索結果がある
+    const rows = table.locator('tbody tr')
+    await expect(rows).toHaveCount(2)
+    await expect(rows.filter({ hasText: '会計ソフト おすすめ 中小企業' })).toBeVisible()
+    await expect(rows.filter({ hasText: 'クラウド会計 安い' })).toBeVisible()
+    await expect(table.getByText('の検索結果')).toHaveCount(2)
+    // 質問文の質問は出さない
+    await expect(table.getByText('中小企業向けのおすすめ会計ソフトは？')).toHaveCount(0)
+  })
+
   test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
     await page.goto('/app')
     await expect(page).toHaveURL(/\/app\/brands\//)

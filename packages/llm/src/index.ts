@@ -24,7 +24,14 @@ export {
   type ExtractionResult,
   type Extractor,
 } from './extract/types'
-export { createLlmPolicyWith, type LlmMode, type LlmPolicy, liveModeFor } from './policy'
+export {
+  createLlmPolicyWith,
+  isLiveOrganizationAllowed,
+  type LlmMode,
+  type LlmPolicy,
+  liveModeBySwitch,
+  liveModeFor,
+} from './policy'
 export {
   estimateCostUsd,
   GEMINI_FREE_SEARCHES_PER_MONTH,

@@ -21,6 +21,7 @@ import { and, eq, gte, inArray, isNull, notLike, or, sql } from 'drizzle-orm'
 import { analyzeRun } from './analyze'
 import { cancelScheduledRunsOfDisabledBrands } from './cancel-run'
 import { DEFAULT_TIMEOUT_MS, runUntilDeadline } from './deadline'
+import { hostOf, isSameSite } from './site'
 
 // DB の provider enum と LLM 側の ProviderId がずれたらここで型エラーになる
 const _providerIdsMatch: [Provider] extends [ProviderId]
@@ -354,7 +355,10 @@ async function saveFailure(db: Db, runId: string, task: Task, model: string, err
 }
 
 /** 引用元を DB の形にする。同じ URL は最初の1つだけ残す */
-export function toCitations(sources: AskResult['sources'], brandDomain: string | null) {
+export function toCitations(
+  sources: readonly { url: string; title?: string | null }[],
+  brandDomain: string | null,
+) {
   const seen = new Set<string>()
   const rows: {
     url: string
@@ -365,20 +369,15 @@ export function toCitations(sources: AskResult['sources'], brandDomain: string |
   }[] = []
   for (const source of sources) {
     if (seen.has(source.url)) continue
-    let domain: string
-    try {
-      domain = new URL(source.url).hostname.toLowerCase().replace(/^www\./, '')
-    } catch {
-      continue
-    }
+    const domain = hostOf(source.url)
+    if (domain === null) continue
     seen.add(source.url)
     rows.push({
       url: source.url,
       domain,
       title: source.title ?? null,
       position: rows.length,
-      isOwnDomain:
-        brandDomain !== null && (domain === brandDomain || domain.endsWith(`.${brandDomain}`)),
+      isOwnDomain: isSameSite(domain, brandDomain),
     })
   }
   return rows

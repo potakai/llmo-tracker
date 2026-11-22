@@ -22,15 +22,32 @@ export type LlmPolicy<P> = {
  * 許可の一覧は環境変数に置く（組織の metadata はユーザーが Better Auth の API で書き換えられるため使わない）。
  */
 export function liveModeFor(env: Env): (organizationId: string) => LlmMode {
-  if (env.LLM_MODE !== 'live') return () => 'fake'
+  return liveModeBySwitch(env.LLM_MODE, env)
+}
+
+/**
+ * 本物の API を使ってよい組織か（LIVE_ORGANIZATION_IDS。カンマ区切り、`*` ならすべて）。
+ * 許可の一覧は AI と DataForSEO で 1 つにする（それぞれのスイッチ LLM_MODE / SERP_MODE とは別）
+ */
+export function isLiveOrganizationAllowed(env: Env): (organizationId: string) => boolean {
   const allowed = new Set(
     (env.LIVE_ORGANIZATION_IDS ?? '')
       .split(',')
       .map((id) => id.trim())
       .filter(Boolean),
   )
-  if (allowed.has('*')) return () => 'live'
-  return (organizationId) => (allowed.has(organizationId) ? 'live' : 'fake')
+  if (allowed.has('*')) return () => true
+  return (organizationId) => allowed.has(organizationId)
+}
+
+/** スイッチ（LLM_MODE や SERP_MODE の値）が live で、かつ許可の一覧にある組織だけ live */
+export function liveModeBySwitch(
+  switchValue: string | undefined,
+  env: Env,
+): (organizationId: string) => LlmMode {
+  if (switchValue !== 'live') return () => 'fake'
+  const isAllowed = isLiveOrganizationAllowed(env)
+  return (organizationId) => (isAllowed(organizationId) ? 'live' : 'fake')
 }
 
 /**

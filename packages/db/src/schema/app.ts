@@ -67,10 +67,16 @@ export const entityTypeEnum = pgEnum('entity_type', ['brand', 'competitor', 'unk
 /** 質問の聞き方。question = 質問文（「〜はどこ？」）、keyword = 検索のように単語を並べたもの */
 export const promptKindEnum = pgEnum('prompt_kind', ['question', 'keyword'])
 
+/** Google の検索結果（DataForSEO）を、本物で取ったか（live）フェイクで作ったか（fake） */
+export const serpModeEnum = pgEnum('serp_mode', ['live', 'fake'])
+/** pending = 検索を頼んで、結果を待っている（または頼む前） */
+export const serpStatusEnum = pgEnum('serp_status', ['pending', 'succeeded', 'failed'])
+
 export const PROVIDERS = providerEnum.enumValues
 export type Provider = (typeof PROVIDERS)[number]
 export const PROMPT_KINDS = promptKindEnum.enumValues
 export type PromptKind = (typeof PROMPT_KINDS)[number]
+export type SerpMode = (typeof serpModeEnum.enumValues)[number]
 
 // ---------------------------------------------------------------------------
 // brand: 計測するブランド
@@ -309,6 +315,107 @@ export const mention = pgTable(
 )
 
 // ---------------------------------------------------------------------------
+// serp_result: キーワードの質問を Google で検索した結果（1 キーワード 1 日 1 行）
+// DataForSEO に検索を頼み（task_post）、数分後に結果を取りに行く（task_get）。
+// (prompt_id, searched_on) を一意にして、同じキーワードを同じ日に 2 回頼まない（二重に課金しない）。
+// ---------------------------------------------------------------------------
+
+export const serpResult = pgTable(
+  'serp_result',
+  {
+    id: id(),
+    promptId: uuid()
+      .notNull()
+      .references(() => prompt.id, { onDelete: 'cascade' }),
+    /** 何日分の検索か（日本時間の日付） */
+    searchedOn: date({ mode: 'string' }).notNull(),
+    mode: serpModeEnum().notNull(),
+    status: serpStatusEnum().notNull().default('pending'),
+    /** DataForSEO の task ID。頼んだらすぐ保存し、やり直しのときはこれで結果を取りに行く */
+    taskId: text(),
+    /**
+     * 検索を頼み始めた時刻。task ID がないままこれが入っている行は、頼んだかどうか分からないので
+     * 頼み直さない（二重に課金しない）
+     */
+    postAttemptedAt: timestamp({ withTimezone: true }),
+    postedAt: timestamp({ withTimezone: true }),
+    fetchedAt: timestamp({ withTimezone: true }),
+    error: text(),
+    /** API が返した費用（USD） */
+    costUsd: numeric({ precision: 10, scale: 6, mode: 'number' }),
+    /** AI による概要が出たか（結果が出るまでは null） */
+    aiOverviewPresent: boolean(),
+    /** あとから読み込まれる AI による概要だったか */
+    aiOverviewAsynchronous: boolean(),
+    aiOverviewText: text(),
+    /** AI による概要から名前を抜き出した方法（モデル名、または rule-based） */
+    extractorModel: text(),
+    /** API が返した結果そのまま（あとで検証できるように残す） */
+    raw: jsonb(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('serp_result_prompt_id_searched_on_uq').on(t.promptId, t.searchedOn),
+    index('serp_result_searched_on_status_idx').on(t.searchedOn, t.status),
+    check(
+      'serp_result_status_payload',
+      sql`${t.status} = 'pending' or (${t.status} = 'succeeded' and ${t.aiOverviewPresent} is not null) or (${t.status} = 'failed' and ${t.error} is not null)`,
+    ),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// serp_entity: 検索結果での自社・競合の扱い（serp_result 1 行につき、自社と競合ごとに 1 行）
+// 順位は brand.domain / competitor.domain で照合し、AI による概要の名前は抽出器で判定する。
+// ---------------------------------------------------------------------------
+
+export const serpEntity = pgTable(
+  'serp_entity',
+  {
+    id: id(),
+    serpResultId: uuid()
+      .notNull()
+      .references(() => serpResult.id, { onDelete: 'cascade' }),
+    entityType: entityTypeEnum().notNull(),
+    competitorId: uuid().references(() => competitor.id, { onDelete: 'cascade' }),
+    /** 自然検索の順位（1 始まり）。上位 10 件になければ null */
+    organicRank: smallint(),
+    organicUrl: text(),
+    /** AI による概要に名前が出たか。AI による概要が出なければ null */
+    aiOverviewMentioned: boolean(),
+  },
+  (t) => [
+    index('serp_entity_serp_result_id_idx').on(t.serpResultId),
+    check(
+      'serp_entity_type',
+      sql`(${t.entityType} = 'brand' and ${t.competitorId} is null) or (${t.entityType} = 'competitor' and ${t.competitorId} is not null)`,
+    ),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// serp_ai_overview_reference: AI による概要の引用元
+// ---------------------------------------------------------------------------
+
+export const serpAiOverviewReference = pgTable(
+  'serp_ai_overview_reference',
+  {
+    id: id(),
+    serpResultId: uuid()
+      .notNull()
+      .references(() => serpResult.id, { onDelete: 'cascade' }),
+    url: text().notNull(),
+    domain: text().notNull(),
+    title: text(),
+    /** 引用元の順番（0 始まり） */
+    position: smallint().notNull(),
+    isOwnDomain: boolean().notNull().default(false),
+  },
+  (t) => [index('serp_ai_overview_reference_serp_result_id_idx').on(t.serpResultId)],
+)
+
+// ---------------------------------------------------------------------------
 // relations（db.query.* でネストして取るため）
 // ---------------------------------------------------------------------------
 
@@ -330,6 +437,25 @@ export const competitorRelations = relations(competitor, ({ one, many }) => ({
 export const promptRelations = relations(prompt, ({ one, many }) => ({
   brand: one(brand, { fields: [prompt.brandId], references: [brand.id] }),
   responses: many(response),
+  serpResults: many(serpResult),
+}))
+
+export const serpResultRelations = relations(serpResult, ({ one, many }) => ({
+  prompt: one(prompt, { fields: [serpResult.promptId], references: [prompt.id] }),
+  entities: many(serpEntity),
+  references: many(serpAiOverviewReference),
+}))
+
+export const serpEntityRelations = relations(serpEntity, ({ one }) => ({
+  serpResult: one(serpResult, { fields: [serpEntity.serpResultId], references: [serpResult.id] }),
+  competitor: one(competitor, { fields: [serpEntity.competitorId], references: [competitor.id] }),
+}))
+
+export const serpAiOverviewReferenceRelations = relations(serpAiOverviewReference, ({ one }) => ({
+  serpResult: one(serpResult, {
+    fields: [serpAiOverviewReference.serpResultId],
+    references: [serpResult.id],
+  }),
 }))
 
 export const runRelations = relations(run, ({ one, many }) => ({
@@ -371,3 +497,5 @@ export type Response = typeof response.$inferSelect
 export type Citation = typeof citation.$inferSelect
 export type Analysis = typeof analysis.$inferSelect
 export type Mention = typeof mention.$inferSelect
+export type SerpResult = typeof serpResult.$inferSelect
+export type SerpEntity = typeof serpEntity.$inferSelect

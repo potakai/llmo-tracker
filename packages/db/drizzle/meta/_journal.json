@@ -36,6 +36,13 @@
       "when": 1795333540195,
       "tag": "0004_vengeful_umar",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795339746972,
+      "tag": "0005_lively_bishop",
+      "breakpoints": true
     }
   ]
 }

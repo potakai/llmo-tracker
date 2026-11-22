@@ -12,6 +12,7 @@ import { db } from '@/lib/db'
 import { getLlmPolicy } from '@/lib/llm'
 import { inngest } from './client'
 import { createRunRequestedEvent, runRequested } from './events'
+import { serpDailyFunction } from './serp'
 
 // ジョブの中身はすべて packages/runner にある。ここはそれを Inngest のステップに載せるだけ
 
@@ -106,4 +107,9 @@ export const recoverStaleRunsFunction = inngest.createFunction(
   },
 )
 
-export const functions = [executeRunFunction, dailyRunsFunction, recoverStaleRunsFunction]
+export const functions = [
+  executeRunFunction,
+  dailyRunsFunction,
+  recoverStaleRunsFunction,
+  serpDailyFunction,
+]

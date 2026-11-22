@@ -18,6 +18,7 @@ ChatGPT や Gemini に毎日同じ質問を投げて、自社と競合が回答�
 | 認証          | Better Auth（organization プラグインでマルチテナント）      |
 | LLM           | Vercel AI SDK（OpenAI の Web 検索 / Gemini の Google 検索） |
 | ジョブ        | Inngest（毎日の自動実行、リトライ、止まった実行の回収）     |
+| 検索順位      | DataForSEO の Google Organic SERP API（Standard queue）     |
 | 画面          | Tailwind CSS 4 / Recharts                                   |
 | Lint / Format | Biome                                                       |
 | テスト        | Vitest（実DBを使った結合テスト）/ Playwright（E2E）         |
@@ -28,11 +29,12 @@ ChatGPT や Gemini に毎日同じ質問を投げて、自社と競合が回答�
 apps/
   web/            Next.js アプリ（画面・API・認証）
     src/server/   Hono の API（ルート、ミドルウェア、Zod スキーマ）
-    src/inngest/  Inngest の関数（run の実行、毎日の自動実行、止まった run の回収）。/api/inngest で公開
+    src/inngest/  Inngest の関数（run の実行、毎日の自動実行、止まった run の回収、毎朝の Google の検索）。/api/inngest で公開
     test/         結合テスト
 packages/
   llm/            AI ごとの呼び出し（OpenAI / Gemini / フェイク）、回答の抽出、料金の計算
-  runner/         実行バッチ（run）の処理：AI に聞いて回答と引用元を保存し、言及を抽出する。毎日の run の作成と、止まった run の回収も
+  serp/           DataForSEO（本物 / フェイク）の呼び出しと、Google の検索結果（順位・AI による概要）の取り出し
+  runner/         実行バッチ（run）の処理：AI に聞いて回答と引用元を保存し、言及を抽出する。毎日の run の作成と、止まった run の回収、Google の検索結果の取得と保存も
   db/             Drizzle のスキーマ、DBクライアント、マイグレーション
     src/schema/
       app.ts      アプリのテーブル（brand, prompt, run, response など）
@@ -97,6 +99,7 @@ pnpm dev
 - **実行は時間で区切って少しずつ進める**：本物の AI だと 1 つの run に数分かかり、サーバーレス関数（Vercel）の実行時間の上限を超える。そこで `executeRunSlice` に予算（`budgetMs`）を渡し、使い切ったら新しい質問・抽出を始めずに `{ done: false }` を返す。残りは毎回 DB から数え直すので、何度に分けて呼んでも、途中で落ちても続きから進む。失敗した回答は、その通しを始める前に失敗したものだけ聞き直す（失敗し続ける AI があっても終わるように）。開発用の `executeRun` は、これを終わるまで呼ぶだけ
 - **ジョブの投げ先は注入する**：開発はリクエストのあとに同じプロセスで実行、テストはその場で実行、本番は Inngest に `run/requested` イベントを送る（`RUN_DISPATCH=inngest`）
 - **ジョブは Inngest で、Vercel の関数として動かす**：Inngest の関数は `apps/web` に置き、`/api/inngest` で公開する。Inngest がステップごとに HTTP で呼びに来るので、別のワーカーを立てたりデプロイしたりしなくてよい。`execute-run` は `executeRunSlice` を 1 ステップ 45 秒の予算で `done` になるまで呼ぶ。`/api/inngest` の `maxDuration` は Vercel の最大の 300 秒にしている。1 回のリクエストは、ふつう最長で「checkpoint の時間枠 10 秒（この間は次のステップを続けて始める。明示して設定）+ 最後に始めた slice の予算 45 秒 + 投げ途中だった質問のタイムアウト 120 秒 ≒ 175 秒 + DB の読み書き」で、時間枠を過ぎると新しいステップは始めないので slice ごとに足し上がらない。DB の読み書きには期限がないので、DB が長く待たされると超えうる（ほかの API と同じリスクとして受け入れている）。同じ run が同時に 2 つ動かないよう `concurrency` の key を run の ID にし、全体でも 3 つまで（Hobby プランの上限 5 より小さく）。リトライを使い切ったら `onFailure` で run を終わらせる
+- **Google の検索順位と AI による概要は、別の Inngest 関数で取る**：DataForSEO の Standard queue は、頼んで（task_post）から結果が出るまで平均 5 分ほどかかる。毎朝 6 時の `serp-daily` が、キーワードの質問ごとに検索を頼み、`step.sleep` で 5 分ずつ待って結果を取りに行く（最大 1 時間。待っている間は関数の実行時間に数えられない）。AI の計測とは別の関数にしているのは、片方が失敗してももう片方を進めるためと、待っている間に `execute-run` の同時実行の枠を使わないため。二重に課金しないように、`serp_result` を (キーワード, 日付) で一意にし、頼む直前に `post_attempted_at` を 1 つの UPDATE で入れ（入っていれば二度と頼まない）、返ってきた task ID はすぐ保存する。本物を使うのは `SERP_MODE=live` かつ `LIVE_ORGANIZATION_IDS` の組織だけ（許可の一覧は AI と共通。スイッチは別なので、DataForSEO だけを止められる）
 - **Trigger.dev から Inngest に乗り換えた**：最初は Trigger.dev を使っていたが、新しい組織では本番へのデプロイができなくなった（`Deployments are not available for this organization`）。Inngest はアプリと同じ Vercel にデプロイされた関数を呼ぶ形なので、ジョブ用のデプロイが要らない。ジョブの中身（run の処理・毎日の run の作成・回収）は最初から `packages/runner` に置き、テストも runner 側にあったので、乗り換えで書き直したのは runner を呼ぶ薄い部分（関数の定義と、Web からの投げ方）だけだった
 - **毎日の自動実行は「作る」と「渡す」を分ける**：毎朝 6 時（日本時間）に、ブランドごとにその日の run を作り（DB の一意制約で 1 日 1 つ）、まだ `queued` の run をすべてジョブに渡す。run を作ったあとジョブに渡す前に落ちても、リトライで拾い直せる。イベントの ID を `run-<runId>` にしているので、24 時間以内に同じ run を二重に渡しても（Web からも同じ ID）1 回しか動かない（Inngest がイベントの ID で重複を除くのは 24 時間）。デモ組織は対象外
 - **止まった run は回収する**：10 分ごとに、30 分なにも進んでいない（作成・開始・回答の保存・分析のどれも更新がない）`queued` / `running` の run を終わらせる。成功した回答があれば `partial`、なければ `failed`。判定と更新を 1 つの UPDATE で行うので、回収の直前に進んだ run を誤って終わらせない。ジョブがリトライを使い切ったときと、ジョブに渡せなかったときは、30 分待たずにその場で終わらせる

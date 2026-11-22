@@ -1,0 +1,315 @@
+import {
+  brand as brandTable,
+  competitor as competitorTable,
+  type Db,
+  prompt as promptTable,
+  type SerpMode,
+  serpResult,
+} from '@llmo/db'
+import type { Extractor } from '@llmo/llm'
+import { type FetchedTask, SerpApiError, type SerpPolicy } from '@llmo/serp'
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { runUntilDeadline } from './deadline'
+import { listScheduledBrands } from './scheduled-brands'
+import { extractAiOverview, type SerpBrand, saveSerpSuccess } from './serp-save'
+
+/** 1 回の DataForSEO の呼び出し・抽出の上限時間 */
+const DEFAULT_SERP_TIMEOUT_MS = 60_000
+const DEFAULT_SERP_CONCURRENCY = 4
+const MAX_ERROR_LENGTH = 1000
+
+export type SerpDeps = {
+  db: Db
+  /** 組織ごとに本物の DataForSEO とフェイクを使い分ける */
+  serp: Pick<SerpPolicy, 'providerFor'>
+  /** AI による概要から名前を抜き出す抽出器（組織ごと。AI の計測と同じもの） */
+  extractorFor: (organizationId: string) => Extractor
+  concurrency?: number
+  timeoutMs?: number
+}
+
+export type SerpSliceOptions = {
+  /** この時間（ミリ秒）を使い切ったら、新しい呼び出しを始めない（呼び出し途中のものは待つ） */
+  budgetMs: number
+  /** 指定すると、このキーワード（質問）の行だけを扱う（デモデータの作成用。ジョブでは指定しない） */
+  promptIds?: readonly string[]
+}
+
+/** 対象をキーワードで絞る条件（指定がなければ絞らない） */
+const onlyPrompts = (promptIds: readonly string[] | undefined) =>
+  promptIds ? inArray(serpResult.promptId, [...promptIds]) : undefined
+
+/** 頼む対象：キーワードの質問と、それを検索するモード */
+export type SerpTarget = { promptId: string; mode: SerpMode }
+
+/**
+ * その日に Google で検索するキーワードの行を作る（status = pending）。
+ * 対象は毎朝の AI の計測と同じ条件のブランド（listScheduledBrands）の、有効な「キーワード」の質問だけ。
+ * (prompt_id, 日付) は一意なので、何度呼んでも 1 キーワード 1 日 1 行。作った行の数を返す
+ */
+export async function claimDailySerpTasks(
+  db: Db,
+  date: string,
+  modeFor: (organizationId: string) => SerpMode,
+): Promise<{ claimed: number }> {
+  const isKeyword = eq(promptTable.kind, 'keyword')
+  const brands = await listScheduledBrands(db, isKeyword)
+  if (brands.length === 0) return { claimed: 0 }
+  const modeOfBrand = new Map(brands.map((b) => [b.id, modeFor(b.organizationId)]))
+  const prompts = await db
+    .select({ id: promptTable.id, brandId: promptTable.brandId })
+    .from(promptTable)
+    .where(
+      and(
+        inArray(promptTable.brandId, [...modeOfBrand.keys()]),
+        isNull(promptTable.archivedAt),
+        isKeyword,
+      ),
+    )
+  const targets = prompts.flatMap((p) => {
+    const mode = modeOfBrand.get(p.brandId)
+    return mode ? [{ promptId: p.id, mode }] : []
+  })
+  return claimSerpTasks(db, date, targets)
+}
+
+/** 指定したキーワードの、その日の行を作る（すでにあれば何もしない）。デモデータの作成でも使う */
+export async function claimSerpTasks(
+  db: Db,
+  date: string,
+  targets: readonly SerpTarget[],
+): Promise<{ claimed: number }> {
+  if (targets.length === 0) return { claimed: 0 }
+  const rows = await db
+    .insert(serpResult)
+    .values(targets.map((t) => ({ promptId: t.promptId, searchedOn: date, mode: t.mode })))
+    .onConflictDoNothing({ target: [serpResult.promptId, serpResult.searchedOn] })
+    .returning({ id: serpResult.id })
+  return { claimed: rows.length }
+}
+
+/**
+ * その日のまだ頼んでいない行について、DataForSEO に検索を頼む（task_post）。
+ * - 頼む直前に post_attempted_at を入れる（入っていない行だけ。1 つの UPDATE で確かめて入れる）。
+ *   入っている行は二度と頼まない。頼んだあと task ID を保存する前に落ちても、二重に課金しない
+ * - task ID は返ってきたらすぐ保存する。結果はあとで collectSerpResults が取りに行く
+ * - 頼むのに失敗したら、そのキーワードだけ failed にして、ほかは続ける
+ * 予算を使い切ったら残りの数を remaining で返す（もう一度呼べば続きから頼む）
+ */
+export async function postSerpTasks(
+  deps: SerpDeps,
+  date: string,
+  options: SerpSliceOptions,
+): Promise<{ posted: number; failed: number; remaining: number }> {
+  const { db } = deps
+  const deadline = Date.now() + options.budgetMs
+  const rows = await db
+    .select({ id: serpResult.id, mode: serpResult.mode, keyword: promptTable.text })
+    .from(serpResult)
+    .innerJoin(promptTable, eq(promptTable.id, serpResult.promptId))
+    .where(
+      and(
+        eq(serpResult.searchedOn, date),
+        eq(serpResult.status, 'pending'),
+        isNull(serpResult.taskId),
+        isNull(serpResult.postAttemptedAt),
+        onlyPrompts(options.promptIds),
+      ),
+    )
+    .orderBy(asc(serpResult.createdAt))
+
+  const counts = { posted: 0, failed: 0 }
+  const processed = await runUntilDeadline(
+    rows,
+    { concurrency: deps.concurrency ?? DEFAULT_SERP_CONCURRENCY, deadline },
+    async (row) => {
+      const [attempt] = await db
+        .update(serpResult)
+        .set({ postAttemptedAt: sql`now()` })
+        .where(and(eq(serpResult.id, row.id), isNull(serpResult.postAttemptedAt)))
+        .returning({ id: serpResult.id })
+      // ほかの呼び出しが先に頼み始めた
+      if (!attempt) return
+      try {
+        const posted = await deps.serp.providerFor(row.mode).postTask({
+          keyword: row.keyword,
+          tag: row.id,
+          abortSignal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_SERP_TIMEOUT_MS),
+        })
+        await db
+          .update(serpResult)
+          .set({ taskId: posted.taskId, postedAt: sql`now()`, costUsd: posted.costUsd })
+          .where(eq(serpResult.id, row.id))
+        counts.posted += 1
+      } catch (error) {
+        await markSerpFailed(db, row.id, `検索を頼めませんでした：${errorMessage(error)}`)
+        counts.failed += 1
+      }
+    },
+  )
+  return { ...counts, remaining: rows.length - processed }
+}
+
+/**
+ * その日の頼んである行について、結果を取りに行く（task_get）。
+ * - まだ終わっていなければ pending のまま（あとでもう一度呼ぶ）
+ * - 終わっていれば、順位と AI による概要を照らし合わせて保存する
+ * - DataForSEO がタスクのエラーを返したら、そのキーワードだけ failed にする。
+ *   通信のエラーなどは pending のまま（次に呼んだときに取り直す。結果の取得は無料）
+ * pending は取りに行ったがまだ結果が出ていない数、remaining は予算を使い切って見送った数
+ * （remaining が残っていれば、もう一度呼べば続きを取りに行く）
+ */
+export async function collectSerpResults(
+  deps: SerpDeps,
+  date: string,
+  options: SerpSliceOptions,
+): Promise<{ succeeded: number; failed: number; pending: number; remaining: number }> {
+  const { db } = deps
+  const deadline = Date.now() + options.budgetMs
+  const rows = await db
+    .select({
+      id: serpResult.id,
+      mode: serpResult.mode,
+      taskId: serpResult.taskId,
+      keyword: promptTable.text,
+      brandId: brandTable.id,
+      organizationId: brandTable.organizationId,
+      brandName: brandTable.name,
+      brandAliases: brandTable.aliases,
+      brandDomain: brandTable.domain,
+    })
+    .from(serpResult)
+    .innerJoin(promptTable, eq(promptTable.id, serpResult.promptId))
+    .innerJoin(brandTable, eq(brandTable.id, promptTable.brandId))
+    .where(
+      and(
+        eq(serpResult.searchedOn, date),
+        eq(serpResult.status, 'pending'),
+        isNotNull(serpResult.taskId),
+        onlyPrompts(options.promptIds),
+      ),
+    )
+    .orderBy(asc(serpResult.createdAt))
+  const competitors = await competitorsOf(db, [...new Set(rows.map((r) => r.brandId))])
+
+  const counts = { succeeded: 0, failed: 0, stillPending: 0 }
+  const processed = await runUntilDeadline(
+    rows,
+    { concurrency: deps.concurrency ?? DEFAULT_SERP_CONCURRENCY, deadline },
+    async (row) => {
+      const brand: SerpBrand = {
+        name: row.brandName,
+        aliases: row.brandAliases,
+        domain: row.brandDomain,
+        competitors: competitors.get(row.brandId) ?? [],
+      }
+      const outcome = await collectOne(deps, row, brand)
+      counts[outcome] += 1
+    },
+  )
+  return {
+    succeeded: counts.succeeded,
+    failed: counts.failed,
+    pending: counts.stillPending,
+    remaining: rows.length - processed,
+  }
+}
+
+type CollectRow = {
+  id: string
+  mode: SerpMode
+  taskId: string | null
+  keyword: string
+  organizationId: string
+}
+
+async function collectOne(
+  deps: SerpDeps,
+  row: CollectRow,
+  brand: SerpBrand,
+): Promise<'succeeded' | 'failed' | 'stillPending'> {
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_SERP_TIMEOUT_MS
+  let fetched: FetchedTask
+  try {
+    fetched = await deps.serp.providerFor(row.mode).fetchTask({
+      taskId: row.taskId ?? '',
+      keyword: row.keyword,
+      abortSignal: AbortSignal.timeout(timeoutMs),
+      fakeHints: {
+        brand: { name: brand.name, domain: brand.domain },
+        competitors: brand.competitors.map((c) => ({ name: c.name, domain: c.domain })),
+      },
+    })
+  } catch (error) {
+    // タスク自体のエラー（ステータスコードがある）は取り直しても同じなので、失敗として記録する
+    if (error instanceof SerpApiError && error.statusCode !== null) {
+      await markSerpFailed(deps.db, row.id, `検索の結果を取得できませんでした：${error.message}`)
+      return 'failed'
+    }
+    return 'stillPending'
+  }
+  if (fetched.status === 'pending') return 'stillPending'
+
+  const extraction = await extractAiOverview(
+    deps.extractorFor(row.organizationId),
+    fetched.serp,
+    brand,
+    AbortSignal.timeout(timeoutMs),
+  )
+  await saveSerpSuccess(deps.db, {
+    serpResultId: row.id,
+    serp: fetched.serp,
+    raw: fetched.raw,
+    brand,
+    extraction,
+  })
+  return 'succeeded'
+}
+
+async function competitorsOf(db: Db, brandIds: string[]) {
+  const grouped = new Map<string, SerpBrand['competitors']>()
+  if (brandIds.length === 0) return grouped
+  const rows = await db
+    .select({
+      id: competitorTable.id,
+      brandId: competitorTable.brandId,
+      name: competitorTable.name,
+      aliases: competitorTable.aliases,
+      domain: competitorTable.domain,
+    })
+    .from(competitorTable)
+    .where(inArray(competitorTable.brandId, brandIds))
+    .orderBy(asc(competitorTable.createdAt))
+  for (const { brandId, ...c } of rows) grouped.set(brandId, [...(grouped.get(brandId) ?? []), c])
+  return grouped
+}
+
+/**
+ * その日のまだ pending の行を、すべて failed にして終わらせる（待つのをやめるとき・ジョブが落ちたとき）。
+ * 理由は行の状態で分ける。終わらせた行の数を返す
+ */
+export async function giveUpSerpTasks(db: Db, date: string): Promise<number> {
+  const rows = await db
+    .update(serpResult)
+    .set({
+      status: 'failed',
+      error: sql`case
+        when ${serpResult.taskId} is not null then '時間内に検索の結果が出ませんでした'
+        when ${serpResult.postAttemptedAt} is not null then '検索を頼めたか確かめられませんでした（二重に費用がかからないよう、頼み直していません）'
+        else '検索を頼む前に、ジョブが終わりました' end`,
+    })
+    .where(and(eq(serpResult.searchedOn, date), eq(serpResult.status, 'pending')))
+    .returning({ id: serpResult.id })
+  return rows.length
+}
+
+async function markSerpFailed(db: Db, id: string, message: string) {
+  await db
+    .update(serpResult)
+    .set({ status: 'failed', error: message.slice(0, MAX_ERROR_LENGTH) })
+    .where(and(eq(serpResult.id, id), eq(serpResult.status, 'pending')))
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

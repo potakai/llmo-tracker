@@ -12,7 +12,9 @@ export const db = createDb(url)
 export const extractor = createRuleBasedExtractor()
 
 /** 組織・ブランド・競合・質問をまとめて作る */
-export async function seedBrand(options: { prompts?: string[]; samplesPerPrompt?: number } = {}) {
+export async function seedBrand(
+  options: { prompts?: string[]; keywords?: string[]; samplesPerPrompt?: number } = {},
+) {
   const [org] = await db
     .insert(organization)
     .values({ name: 'Test', slug: `test-${crypto.randomUUID()}`, createdAt: new Date() })
@@ -32,7 +34,14 @@ export async function seedBrand(options: { prompts?: string[]; samplesPerPrompt?
   ])
   const prompts = await db
     .insert(prompt)
-    .values((options.prompts ?? ['質問1', '質問2']).map((text) => ({ brandId: b!.id, text })))
+    .values([
+      ...(options.prompts ?? ['質問1', '質問2']).map((text) => ({ brandId: b!.id, text })),
+      ...(options.keywords ?? []).map((text) => ({
+        brandId: b!.id,
+        text,
+        kind: 'keyword' as const,
+      })),
+    ])
     .returning()
   return { brand: b!, prompts }
 }
