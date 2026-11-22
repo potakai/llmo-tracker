@@ -579,6 +579,21 @@ describe('結果の取得の失敗（最後のエラーを残す）', () => {
     expect(waitingRow?.error).toBe('時間内に検索の結果が出ませんでした')
   })
 
+  it('障害のあとで結果が取れたら、成功の保存と同じ更新の中で最後のエラーを消す', async () => {
+    const { collect } = await postedRow('障害のあと成功')
+    await collect(async () => {
+      throw new SerpApiError('DataForSEO が HTTP 502 を返しました', null, 'request')
+    })
+
+    const succeeded = await collect(async () => ({ status: 'ready', serp: knownSerp, raw: {} }))
+
+    expect(succeeded).toMatchObject({
+      status: 'succeeded',
+      lastFetchError: null,
+      lastFetchErrorAt: null,
+    })
+  })
+
   it('タスク自体のエラーなら、取り直さずに failed にする（ステータスコードがあっても障害なら取り直す）', async () => {
     const task = await postedRow('タスクのエラー')
     const request = await postedRow('全体のエラー')

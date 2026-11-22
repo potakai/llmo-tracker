@@ -109,6 +109,9 @@ export async function saveSerpSuccess(
         status: 'succeeded',
         fetchedAt: new Date(),
         error: null,
+        // 取れたので、前の障害のエラーは同じ更新の中で消す
+        lastFetchError: null,
+        lastFetchErrorAt: null,
         aiOverviewPresent: serp.aiOverview !== null,
         aiOverviewAsynchronous: serp.aiOverview?.asynchronous ?? null,
         aiOverviewText: serp.aiOverview?.text ?? null,
