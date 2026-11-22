@@ -1,6 +1,6 @@
-import { type PromptKind, prompt, response, run } from '@llmo/db'
+import { citation, mention, type PromptKind, prompt, response, run } from '@llmo/db'
 import type { LlmMode } from '@llmo/llm'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { countedResponses } from './sample-responses'
 import { inOrganization } from './tenant'
@@ -42,6 +42,14 @@ export async function updatePromptKind(
   return updated ?? null
 }
 
+/** 回答 1 件を画面に出すのに要るもの（ResponseView）。日付・引用元・分析結果・言及 */
+export const RESPONSE_VIEW_WITH = {
+  run: { columns: { scheduledFor: true, createdAt: true } },
+  citations: { orderBy: asc(citation.position) },
+  analysis: { columns: { extractorModel: true, sentiment: true } },
+  mentions: { orderBy: asc(mention.rank) },
+} as const
+
 /**
  * 質問への最近の回答（新しい順）。回答・引用元・分析結果・言及つき。
  * 回答の run が他の組織のブランドのものなら出さない。
@@ -65,11 +73,6 @@ export async function listPromptResponses(
     ),
     orderBy: [desc(response.createdAt), desc(response.sampleIndex)],
     limit: options.limit ?? 30,
-    with: {
-      run: { columns: { scheduledFor: true, createdAt: true } },
-      citations: { orderBy: (c, { asc }) => asc(c.position) },
-      analysis: { columns: { extractorModel: true, sentiment: true } },
-      mentions: { orderBy: (m, { asc }) => asc(m.rank) },
-    },
+    with: RESPONSE_VIEW_WITH,
   })
 }

@@ -9,6 +9,7 @@ import {
   type AnswerProvider,
   createRuleBasedExtractor,
   DEMO_MODEL_PREFIX,
+  type Extractor,
   type ProviderId,
 } from '@llmo/llm'
 import { createScheduledRun, executeRun } from '@llmo/runner'
@@ -21,7 +22,10 @@ import { DEMO_METADATA } from '@/server/demo'
 
 const DAYS = 30
 const BRAND = 'サンプル会計'
-const COMPETITORS = ['ミライ会計', 'ラクラク帳簿']
+const COMPETITORS = [
+  { name: 'ミライ会計', domain: 'mirai-kaikei.example' },
+  { name: 'ラクラク帳簿', domain: 'rakuraku-choubo.example' },
+]
 const OTHERS = ['クラウドブックス', 'ベーシック帳簿']
 const PROMPTS = [
   '中小企業向けのおすすめ会計ソフトは？',
@@ -39,6 +43,18 @@ const DOMAINS = [
   { url: 'https://rakuraku-choubo.example/price', title: 'ラクラク帳簿 料金' },
 ]
 const OWN = { url: 'https://sample-kaikei.example/features', title: 'サンプル会計 機能一覧' }
+/**
+ * 改善のヒントの「載るべきサイト」用：自社が出ない回答でだけ引用されるランキングサイト。
+ * 競合ばかりが載っている想定
+ */
+const RANKING = { url: 'https://kaikei-ranking.example/2026', title: '会計ソフトランキング' }
+const RANKING_RATE = 0.6
+/** 「自社サイトが参考にされていない」用：自社が出た回答でも、自社サイトはまれにしか引用されない */
+const OWN_CITE_BASE = 0.04
+const OWN_CITE_GROWTH = 0.08
+/** 「AI が書いている気になる点」用：自社が出た回答のうち、気になる書き方をする割合 */
+const NEGATIVE_RATE = 0.25
+const NEGATIVE_REMARK = 'サポートの返信が遅いという声もあります'
 
 // --- 決まった乱数（同じ入力なら同じ結果） ---------------------------------
 function rng(seed: string) {
@@ -75,28 +91,32 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
       const pBrand = KEYWORD_PROMPTS.includes(question) ? pBase * KEYWORD_FACTOR : pBase
 
       const candidates: { name: string; weight: number }[] = [
-        { name: COMPETITORS[0]!, weight: random() < 0.8 ? 3 + random() : 0 },
-        { name: COMPETITORS[1]!, weight: random() < 0.55 ? 2 + random() : 0 },
+        { name: COMPETITORS[0]!.name, weight: random() < 0.8 ? 3 + random() : 0 },
+        { name: COMPETITORS[1]!.name, weight: random() < 0.55 ? 2 + random() : 0 },
         { name: BRAND, weight: random() < pBrand ? 1.5 + random() * (1 + t * 2) : 0 },
         { name: OTHERS[0]!, weight: random() < 0.3 ? 1 + random() : 0 },
         { name: OTHERS[1]!, weight: random() < 0.15 ? random() : 0 },
       ]
       const picked = candidates.filter((c) => c.weight > 0).sort((a, b) => b.weight - a.weight)
       const list = picked.length > 0 ? picked : [candidates[0]!]
+      const hasBrand = list.some((c) => c.name === BRAND)
+      const isNegative = hasBrand && random() < NEGATIVE_RATE
+      const remark = (name: string, i: number) =>
+        name === BRAND && isNegative
+          ? NEGATIVE_REMARK
+          : `${['機能が充実', '価格が手ごろ', '画面がわかりやすい', 'サポートが丁寧'][i % 4]}と評判です`
 
       const text = [
         `「${question}」というご質問ですね。よく名前が挙がるものを紹介します。`,
         '',
-        ...list.map(
-          (c, i) =>
-            `${i + 1}. ${c.name}：${['機能が充実', '価格が手ごろ', '画面がわかりやすい', 'サポートが丁寧'][i % 4]}と評判です。`,
-        ),
+        ...list.map((c, i) => `${i + 1}. ${c.name}：${remark(c.name, i)}。`),
         '',
         '無料体験で実際の画面を比べてみるのがおすすめです。',
       ].join('\n')
 
       const sources = [...DOMAINS].filter(() => random() < 0.5)
-      if (list.some((c) => c.name === BRAND) && random() < 0.4 + t * 0.4) sources.push(OWN)
+      if (!hasBrand && random() < RANKING_RATE) sources.push(RANKING)
+      if (hasBrand && random() < OWN_CITE_BASE + t * OWN_CITE_GROWTH) sources.push(OWN)
 
       return {
         provider: id,
@@ -108,6 +128,23 @@ function demoProvider(id: ProviderId, state: { day: number }): AnswerProvider {
         searchCount: 1,
         latencyMs: Math.round(2000 + random() * 6000),
       }
+    },
+  }
+}
+
+/**
+ * デモ用の抽出器。名前はルールベースで探し、言い回し（感情）は、
+ * 自社について気になる書き方（NEGATIVE_REMARK）をしていれば否定的、そうでなければ好意的とする
+ * （ルールベースの抽出器は言い回しを判定しないため）
+ */
+function demoExtractor(): Extractor {
+  const rules = createRuleBasedExtractor()
+  return {
+    async extract(input) {
+      const result = await rules.extract(input)
+      if (!result.brandMentioned) return result
+      const isNegative = input.answerText.includes(`${BRAND}：${NEGATIVE_REMARK}`)
+      return { ...result, sentiment: isNegative ? 'negative' : 'positive' }
     },
   }
 }
@@ -179,7 +216,7 @@ async function main() {
       .values({ organizationId, ...values })
       .returning()) as [typeof brand.$inferSelect]
   }
-  await db.insert(competitor).values(COMPETITORS.map((name) => ({ brandId: b.id, name })))
+  await db.insert(competitor).values(COMPETITORS.map((c) => ({ brandId: b.id, ...c })))
   await db
     .insert(prompt)
     .values([
@@ -190,7 +227,7 @@ async function main() {
   // 4. 30 日分の自動計測
   const state = { day: 0 }
   const providers = { openai: demoProvider('openai', state), gemini: demoProvider('gemini', state) }
-  const extractor = createRuleBasedExtractor()
+  const extractor = demoExtractor()
   const today = todayInTokyo()
   for (let day = 0; day < DAYS; day++) {
     state.day = day

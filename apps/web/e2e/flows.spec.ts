@@ -94,6 +94,45 @@ test.describe('デモアカウントでログイン済み', () => {
     await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
   })
 
+  test('「改善のヒント」タブで、4 種類の施策と、その根拠が見られる', async ({ page }) => {
+    await page.goto('/app')
+    await page.getByRole('link', { name: '改善のヒント' }).click()
+    await expect(page).toHaveURL(/\/hints$/)
+    await expect(page.getByRole('link', { name: '改善のヒント' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await expect(page.getByText(/次にやるとよいことを、大事な順に並べました/)).toBeVisible()
+
+    const hints = page.getByRole('list', { name: '改善のヒント' }).getByRole('article')
+    await expect(hints).toHaveCount(5)
+    // デモデータでは 4 種類すべてが出る
+    await expect(page.getByRole('heading', { name: /御社の情報を載せましょう/ })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /御社がすすめられていません/ }).first(),
+    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /気になる書き方をしています/ })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /AI にほとんど参考にされていません/ }),
+    ).toBeVisible()
+    // AI が自社について書いた文を、そのまま見せる
+    await expect(
+      page.getByText('サンプル会計：サポートの返信が遅いという声もあります。', { exact: true }),
+    ).toBeVisible()
+
+    // 根拠を開くと、実際の AI の回答が見られる
+    const site = hints.filter({ hasText: '御社の情報を載せましょう' })
+    await site.getByText(/を参考にした回答を見る/).click()
+    const firstAnswer = site.locator('details details').first()
+    await firstAnswer.locator('summary').click()
+    await expect(firstAnswer.getByText('会計ソフトランキング')).toBeVisible()
+
+    // 自社サイトの施策の根拠は、参考にされたサイトの一覧
+    const own = hints.filter({ hasText: 'AI にほとんど参考にされていません' })
+    await own.getByText('AI が参考にしたサイトを見る').click()
+    await expect(own.getByText('自社サイト')).toBeVisible()
+  })
+
   test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {
     await page.goto('/app')
     await expect(page).toHaveURL(/\/app\/brands\//)
