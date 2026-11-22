@@ -867,6 +867,75 @@ describe('recoverStaleSerpResults（ジョブが消えて残った pending の�
   })
 })
 
+describe('回収と送信がぶつかったとき（回収が failed にした行は、送信処理が更新しない）', () => {
+  const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60_000)
+
+  it('回収が先に勝つ：送信処理が読んだあと、送信権を取る前に回収された行は、頼まない', async () => {
+    const first = uniqueKeyword('先に送る')
+    const second = uniqueKeyword('送る前に回収される')
+    const { prompts } = await seedBrand({ keywords: [first, second] })
+    const date = nextDate()
+    const idOf = (text: string) => prompts.find((p) => p.text === text)!.id
+    await claimSerpTasks(db, date, [
+      { promptId: idOf(first), mode: 'fake' },
+      { promptId: idOf(second), mode: 'fake' },
+    ])
+    // どちらも期限を過ぎた行にしておき（送信処理は古い順に頼むので、1 件目から）、
+    // 1 件目を頼んでいる間に回収が走る。2 件目は、送信処理が読んだあとで、送信権を取る前に回収される
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(5) })
+      .where(eq(serpResult.promptId, idOf(first)))
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(4) })
+      .where(eq(serpResult.promptId, idOf(second)))
+    const fake = createFakeSerpProvider()
+    const provider = recordingProvider('fake', {
+      post: async (keyword) => {
+        if (keyword === first) await recoverStaleSerpResults(db)
+        return fake.postTask({ keyword })
+      },
+    })
+    const deps = { ...depsWith({ fake: provider.provider }), concurrency: 1 }
+
+    await postSerpTasks(deps, date, { ...UNLIMITED, promptIds: [idOf(first), idOf(second)] })
+
+    expect(provider.posted).toEqual([first])
+    const [row] = await rowsOf([idOf(second)], date)
+    expect(row).toMatchObject({ status: 'failed', taskId: null, postAttemptedAt: null })
+    expect(row?.error).toBe('検索を頼む前に、ジョブが終わりました')
+  })
+
+  it('送信中に回収される：task_post の最中に回収された行には、送信結果（task ID・費用）を書かない', async () => {
+    const keyword = uniqueKeyword('送信中に回収される')
+    const { prompts } = await seedBrand({ keywords: [keyword] })
+    const date = nextDate()
+    const ids = keywordIds(prompts)
+    await claimSerpTasks(db, date, [{ promptId: ids[0]!, mode: 'fake' }])
+    await db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(4) })
+      .where(inArray(serpResult.promptId, ids))
+    const provider = recordingProvider('fake', {
+      post: async () => {
+        await recoverStaleSerpResults(db)
+        return { taskId: 'task-after-recovery', costUsd: 0.0012 }
+      },
+    })
+
+    const result = await postSerpTasks(depsWith({ fake: provider.provider }), date, {
+      ...UNLIMITED,
+      promptIds: ids,
+    })
+
+    expect(result.posted).toBe(0)
+    const [row] = await rowsOf(ids, date)
+    expect(row).toMatchObject({ status: 'failed', taskId: null, postedAt: null, costUsd: null })
+    expect(row?.error).toMatch(/頼めたか確かめられませんでした/)
+  })
+})
+
 describe('対象のキーワードを絞る（デモデータの作成用）', () => {
   it('promptIds を渡すと、同じ日のほかのキーワードの行には触らない', async () => {
     const mine = uniqueKeyword('自分の')

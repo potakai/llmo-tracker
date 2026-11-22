@@ -138,12 +138,19 @@ export async function postSerpTasks(
     rows,
     { concurrency: deps.concurrency ?? DEFAULT_SERP_CONCURRENCY, deadline },
     async (row) => {
+      // 送信権を取る。まだ pending で、だれも頼み始めていない行だけ（回収が先に failed にした行は取らない）
       const [attempt] = await db
         .update(serpResult)
         .set({ postAttemptedAt: sql`now()` })
-        .where(and(eq(serpResult.id, row.id), isNull(serpResult.postAttemptedAt)))
+        .where(
+          and(
+            eq(serpResult.id, row.id),
+            eq(serpResult.status, 'pending'),
+            isNull(serpResult.postAttemptedAt),
+          ),
+        )
         .returning({ id: serpResult.id })
-      // ほかの呼び出しが先に頼み始めた
+      // ほかの呼び出しが先に頼み始めた、または回収で終わっている
       if (!attempt) return
       // 頼む直前に、今の許可を確かめる（row.mode だけで本物を選ばない）
       if (!isModeAllowed(deps, row)) {
@@ -157,11 +164,14 @@ export async function postSerpTasks(
           tag: row.id,
           abortSignal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_SERP_TIMEOUT_MS),
         })
-        await db
+        // 送信結果を保存する。頼んでいる間に回収で failed になった行には書かない（終わった行を pending の続きとして扱わない）
+        const [saved] = await db
           .update(serpResult)
           .set({ taskId: posted.taskId, postedAt: sql`now()`, costUsd: posted.costUsd })
-          .where(eq(serpResult.id, row.id))
-        counts.posted += 1
+          .where(and(eq(serpResult.id, row.id), eq(serpResult.status, 'pending')))
+          .returning({ id: serpResult.id })
+        if (saved) counts.posted += 1
+        else counts.failed += 1
       } catch (error) {
         await markSerpFailed(db, row.id, `検索を頼めませんでした：${errorMessage(error)}`)
         counts.failed += 1
