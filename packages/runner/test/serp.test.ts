@@ -931,7 +931,7 @@ describe('回収と送信がぶつかったとき（回収が failed にした�
     expect(row?.error).toBe('検索を頼む前に、ジョブが終わりました')
   })
 
-  it('送信中に回収される：task_post の最中に回収された行には、送信結果（task ID・費用）を書かない', async () => {
+  it('送信中に回収される：status と回収の理由は変えずに、送信結果（task ID・送信時刻・費用）は残す。その行は取りに行かない', async () => {
     const keyword = uniqueKeyword('送信中に回収される')
     const { prompts } = await seedBrand({ keywords: [keyword] })
     const date = nextDate()
@@ -944,16 +944,32 @@ describe('回収と送信がぶつかったとき（回収が failed にした�
         return { taskId: 'task-after-recovery', costUsd: 0.0012 }
       },
     })
+    const deps = depsWith({ fake: provider.provider })
+    const options = { ...UNLIMITED, promptIds: ids }
 
-    const result = await postSerpTasks(depsWith({ fake: provider.provider }), date, {
-      ...UNLIMITED,
-      promptIds: ids,
-    })
+    const result = await postSerpTasks(deps, date, options)
 
+    // 回収で終わった行なので、頼めた数には入れない
     expect(result.posted).toBe(0)
     const [row] = await rowsOf(ids, date)
-    expect(row).toMatchObject({ status: 'failed', taskId: null, postedAt: null, costUsd: null })
+    // DataForSEO では費用がかかっているので、task ID と費用は残す（status と理由は回収のまま）
+    expect(row).toMatchObject({ status: 'failed', taskId: 'task-after-recovery', costUsd: 0.0012 })
+    expect(row?.postedAt).toBeInstanceOf(Date)
     expect(row?.error).toMatch(/頼めたか確かめられませんでした/)
+
+    // failed の行は、task ID があっても取りに行かず、ほかの処理も触らない
+    await collectSerpResults(deps, date, options)
+    await giveUpSerpTasks(db, date)
+    await recoverStaleSerpResults(db)
+    expect(provider.fetched).not.toContain(keyword)
+    expect((await rowsOf(ids, date))[0]).toMatchObject({
+      status: 'failed',
+      error: row?.error,
+      taskId: 'task-after-recovery',
+      costUsd: 0.0012,
+      fetchedAt: null,
+      raw: null,
+    })
   })
 })
 

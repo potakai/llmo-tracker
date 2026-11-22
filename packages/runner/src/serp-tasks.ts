@@ -166,13 +166,15 @@ export async function postSerpTasks(
           tag: row.id,
           abortSignal: AbortSignal.timeout(deps.timeoutMs ?? DEFAULT_SERP_TIMEOUT_MS),
         })
-        // 送信結果を保存する。頼んでいる間に回収で failed になった行には書かない（終わった行を pending の続きとして扱わない）
+        // 送信結果（task ID・送信時刻・費用）を保存する。status は変えず、pending でも failed でも書く。
+        // 頼んでいる間に回収で failed になった行も、DataForSEO では費用がかかっているので記録を残す
+        // （failed の行は、task ID があっても結果を取りに行かない。collectSerpResults は pending の行だけを読む）
         const [saved] = await db
           .update(serpResult)
           .set({ taskId: posted.taskId, postedAt: sql`now()`, costUsd: posted.costUsd })
-          .where(and(eq(serpResult.id, row.id), eq(serpResult.status, 'pending')))
-          .returning({ id: serpResult.id })
-        if (saved) counts.posted += 1
+          .where(eq(serpResult.id, row.id))
+          .returning({ status: serpResult.status })
+        if (saved?.status === 'pending') counts.posted += 1
         else counts.failed += 1
       } catch (error) {
         await markSerpFailed(db, row.id, `検索を頼めませんでした：${errorMessage(error)}`)
