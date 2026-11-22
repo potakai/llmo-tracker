@@ -20,6 +20,7 @@ export {
   recoverStaleRuns,
 } from './recover'
 export { listScheduledBrands, type ScheduledBrand } from './scheduled-brands'
+export { DEFAULT_SERP_STALE_AFTER_MINUTES, SERP_JOB_DEADLINE_MINUTES } from './serp-limits'
 export { bestOrganicRank, type SerpBrand, toEntityRows } from './serp-save'
 export {
   type CollectOptions,
@@ -27,7 +28,6 @@ export {
   claimDailySerpTasks,
   claimSerpTasks,
   collectSerpResults,
-  DEFAULT_SERP_STALE_AFTER_MINUTES,
   giveUpSerpTasks,
   postSerpTasks,
   recoverStaleSerpResults,

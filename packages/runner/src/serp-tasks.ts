@@ -11,6 +11,7 @@ import { type FetchedTask, SerpApiError, type SerpPolicy } from '@llmo/serp'
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, type SQL, sql } from 'drizzle-orm'
 import { runUntilDeadline } from './deadline'
 import { listScheduledBrands } from './scheduled-brands'
+import { DEFAULT_SERP_STALE_AFTER_MINUTES, SERP_JOB_DEADLINE_MINUTES } from './serp-limits'
 import { extractAiOverview, type SerpBrand, saveSerpSuccess } from './serp-save'
 
 /** 1 回の DataForSEO の呼び出し・抽出の上限時間 */
@@ -112,6 +113,7 @@ export async function postSerpTasks(
 ): Promise<{ posted: number; failed: number; remaining: number }> {
   const { db } = deps
   const deadline = Date.now() + options.budgetMs
+  await expireSerpTasks(db, date, options.promptIds)
   const rows = await db
     .select({
       id: serpResult.id,
@@ -215,6 +217,7 @@ export async function collectSerpResults(
 ): Promise<CollectResult> {
   const { db } = deps
   const deadline = Date.now() + options.budgetMs
+  await expireSerpTasks(db, date, options.promptIds)
   const rows = await db
     .select({
       id: serpResult.id,
@@ -385,12 +388,6 @@ async function competitorsOf(db: Db, brandIds: string[]) {
 }
 
 /**
- * 回収するまでの時間の初期値（行を作ってから）。毎朝のジョブは、頼む・待つ（5 分 × 12 回）・取りに行くで
- * 1 時間ほどかかり、Inngest のリトライが入ると延びる。それより十分長くして、動いているジョブの行を終わらせない
- */
-export const DEFAULT_SERP_STALE_AFTER_MINUTES = 180
-
-/**
  * pending の行を終わらせるときの理由。頼んだか（障害で取れていないか・まだ出ていないか）・
  * 頼めたか確かめられないか・頼む前か、で分ける
  */
@@ -405,10 +402,10 @@ const giveUpReason = sql`case
  * pending の行を、理由を付けて failed にする。終わった行には触らない。
  * failed にした行は二度と頼まない（頼み始めた印があって task ID のない行も、頼み直さない）
  */
-async function failPendingSerp(db: Db, where: SQL): Promise<number> {
+async function failPendingSerp(db: Db, where: SQL, reason: SQL = giveUpReason): Promise<number> {
   const rows = await db
     .update(serpResult)
-    .set({ status: 'failed', error: giveUpReason })
+    .set({ status: 'failed', error: reason })
     .where(and(eq(serpResult.status, 'pending'), where))
     .returning({ id: serpResult.id })
   return rows.length
@@ -420,6 +417,26 @@ async function failPendingSerp(db: Db, where: SQL): Promise<number> {
  */
 export async function giveUpSerpTasks(db: Db, date: string): Promise<number> {
   return failPendingSerp(db, eq(serpResult.searchedOn, date))
+}
+
+/** 毎朝のジョブの期限を過ぎて終わらせるときの理由（状態ごとの理由を後ろに付ける） */
+const jobDeadlineReason = sql`left('毎朝のジョブの期限（行を作ってから ${sql.raw(String(SERP_JOB_DEADLINE_MINUTES / 60))} 時間）を過ぎたため、終わらせました：' || ${giveUpReason}, ${MAX_ERROR_LENGTH})`
+
+/**
+ * 毎朝のジョブの期限（SERP_JOB_DEADLINE_MINUTES）を過ぎた、その日の pending の行を理由付きで failed にする。
+ * 頼む・取りに行く前に呼ぶので、期限を過ぎた行には新しく頼まず、結果も取りに行かない
+ */
+async function expireSerpTasks(db: Db, date: string, promptIds: readonly string[] | undefined) {
+  const cutoff = new Date(Date.now() - SERP_JOB_DEADLINE_MINUTES * 60_000)
+  return failPendingSerp(
+    db,
+    and(
+      eq(serpResult.searchedOn, date),
+      lt(serpResult.createdAt, cutoff),
+      onlyPrompts(promptIds),
+    ) as SQL,
+    jobDeadlineReason,
+  )
 }
 
 /**

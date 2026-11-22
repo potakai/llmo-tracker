@@ -22,9 +22,11 @@ import {
   claimDailySerpTasks,
   claimSerpTasks,
   collectSerpResults,
+  DEFAULT_SERP_STALE_AFTER_MINUTES,
   giveUpSerpTasks,
   postSerpTasks,
   recoverStaleSerpResults,
+  SERP_JOB_DEADLINE_MINUTES,
   type SerpDeps,
   waitAndCollectSerpResults,
 } from '../src'
@@ -870,6 +872,13 @@ describe('recoverStaleSerpResults（ジョブが消えて残った pending の�
 describe('回収と送信がぶつかったとき（回収が failed にした行は、送信処理が更新しない）', () => {
   const hoursAgo = (hours: number) => new Date(Date.now() - hours * 60 * 60_000)
 
+  /** 行の作成時刻を、回収の期限を過ぎたことにする（送信の途中で時間が過ぎた状態を作る） */
+  const makeStale = (promptIds: string[]) =>
+    db
+      .update(serpResult)
+      .set({ createdAt: hoursAgo(4) })
+      .where(inArray(serpResult.promptId, promptIds))
+
   it('回収が先に勝つ：送信処理が読んだあと、送信権を取る前に回収された行は、頼まない', async () => {
     const first = uniqueKeyword('先に送る')
     const second = uniqueKeyword('送る前に回収される')
@@ -880,20 +889,20 @@ describe('回収と送信がぶつかったとき（回収が failed にした�
       { promptId: idOf(first), mode: 'fake' },
       { promptId: idOf(second), mode: 'fake' },
     ])
-    // どちらも期限を過ぎた行にしておき（送信処理は古い順に頼むので、1 件目から）、
-    // 1 件目を頼んでいる間に回収が走る。2 件目は、送信処理が読んだあとで、送信権を取る前に回収される
+    // 送信処理は古い順に頼むので、1 件目を先にする（どちらもジョブの期限内）
     await db
       .update(serpResult)
-      .set({ createdAt: hoursAgo(5) })
+      .set({ createdAt: hoursAgo(1) })
       .where(eq(serpResult.promptId, idOf(first)))
-    await db
-      .update(serpResult)
-      .set({ createdAt: hoursAgo(4) })
-      .where(eq(serpResult.promptId, idOf(second)))
+    // 1 件目を頼んでいる間に、2 件目の期限が過ぎて回収が走る。
+    // 2 件目は、送信処理が読んだあとで、送信権を取る前に回収される
     const fake = createFakeSerpProvider()
     const provider = recordingProvider('fake', {
       post: async (keyword) => {
-        if (keyword === first) await recoverStaleSerpResults(db)
+        if (keyword === first) {
+          await makeStale([idOf(second)])
+          await recoverStaleSerpResults(db)
+        }
         return fake.postTask({ keyword })
       },
     })
@@ -913,12 +922,9 @@ describe('回収と送信がぶつかったとき（回収が failed にした�
     const date = nextDate()
     const ids = keywordIds(prompts)
     await claimSerpTasks(db, date, [{ promptId: ids[0]!, mode: 'fake' }])
-    await db
-      .update(serpResult)
-      .set({ createdAt: hoursAgo(4) })
-      .where(inArray(serpResult.promptId, ids))
     const provider = recordingProvider('fake', {
       post: async () => {
+        await makeStale(ids)
         await recoverStaleSerpResults(db)
         return { taskId: 'task-after-recovery', costUsd: 0.0012 }
       },
@@ -933,6 +939,80 @@ describe('回収と送信がぶつかったとき（回収が failed にした�
     const [row] = await rowsOf(ids, date)
     expect(row).toMatchObject({ status: 'failed', taskId: null, postedAt: null, costUsd: null })
     expect(row?.error).toMatch(/頼めたか確かめられませんでした/)
+  })
+})
+
+describe('毎朝のジョブの期限（行を作ってから 2 時間）', () => {
+  const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+
+  it('ジョブの期限は、回収の期限より短い（動いているジョブの行を回収が閉じない）', () => {
+    expect(SERP_JOB_DEADLINE_MINUTES).toBe(120)
+    expect(DEFAULT_SERP_STALE_AFTER_MINUTES).toBe(180)
+    expect(SERP_JOB_DEADLINE_MINUTES).toBeLessThan(DEFAULT_SERP_STALE_AFTER_MINUTES)
+  })
+
+  /** 作ってから minutes 分たった行を 1 つ作る。posted なら頼んだ状態にする */
+  async function rowCreated(label: string, minutes: number, options: { posted?: boolean } = {}) {
+    const keyword = uniqueKeyword(label)
+    const { prompts } = await seedBrand({ keywords: [keyword] })
+    const date = nextDate()
+    const ids = keywordIds(prompts)
+    await claimSerpTasks(db, date, [{ promptId: ids[0]!, mode: 'fake' }])
+    await db
+      .update(serpResult)
+      .set({
+        createdAt: minutesAgo(minutes),
+        ...(options.posted ? { postAttemptedAt: new Date(), taskId: 'task-1' } : {}),
+      })
+      .where(inArray(serpResult.promptId, ids))
+    const provider = recordingProvider('fake')
+    const deps = depsWith({ fake: provider.provider })
+    return { keyword, date, ids, provider, deps, options: { ...UNLIMITED, promptIds: ids } }
+  }
+
+  it('期限を過ぎた行は、頼まずに理由を付けて failed にする', async () => {
+    const { keyword, date, ids, provider, deps, options } = await rowCreated('頼む前に期限', 150)
+
+    await postSerpTasks(deps, date, options)
+
+    expect(provider.posted).not.toContain(keyword)
+    const [row] = await rowsOf(ids, date)
+    expect(row?.status).toBe('failed')
+    expect(row?.error).toMatch(/毎朝のジョブの期限（行を作ってから 2 時間）を過ぎたため/)
+    expect(row?.error).toMatch(/検索を頼む前/)
+  })
+
+  it('期限を過ぎた行は、結果を取りに行かずに理由を付けて failed にする', async () => {
+    const { keyword, date, ids, provider, deps, options } = await rowCreated('取る前に期限', 150, {
+      posted: true,
+    })
+
+    const result = await collectSerpResults(deps, date, options)
+
+    expect(provider.fetched).not.toContain(keyword)
+    expect(result).toMatchObject({ pending: 0, remaining: 0 })
+    const [row] = await rowsOf(ids, date)
+    expect(row?.status).toBe('failed')
+    expect(row?.error).toMatch(/毎朝のジョブの期限（行を作ってから 2 時間）を過ぎたため/)
+    expect(row?.error).toMatch(/時間内に検索の結果が出ませんでした/)
+  })
+
+  it('期限内の行は、ふつうに頼んで取りに行く', async () => {
+    const { keyword, date, ids, provider, deps, options } = await rowCreated('期限内', 90)
+
+    await postSerpTasks(deps, date, options)
+    await collectSerpResults(deps, date, options)
+
+    expect(provider.posted).toEqual([keyword])
+    expect((await rowsOf(ids, date))[0]?.status).toBe('succeeded')
+  })
+
+  it('ジョブの期限を過ぎても回収の期限の前なら、回収は触らない（ジョブが自分で閉じる）', async () => {
+    const { date, ids } = await rowCreated('回収はまだ', 150)
+
+    await recoverStaleSerpResults(db)
+
+    expect((await rowsOf(ids, date))[0]?.status).toBe('pending')
   })
 })
 
