@@ -30,7 +30,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ brand
         brandId={brand.id}
         readOnly={isDemo}
         max={MAX_COMPETITORS}
-        competitors={brand.competitors.map((c) => ({ id: c.id, name: c.name }))}
+        competitors={brand.competitors.map((c) => ({ id: c.id, name: c.name, domain: c.domain }))}
       />
       <BrandInfoForm
         readOnly={isDemo}

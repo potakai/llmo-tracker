@@ -98,6 +98,7 @@ test.describe('デモアカウントでログイン済み', () => {
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '競合を追加' })).toBeDisabled()
 
     // ブランドの切り替えは見られるが、追加はできない
     await page.locator('summary', { hasText: 'ブランドを切り替える' }).click()
@@ -287,12 +288,33 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await page.reload()
   await expect(page.getByLabel('「質問その2」の種類')).toHaveValue('keyword')
 
-  // 競合の名前を変えて、削除する
-  await page.getByRole('button', { name: '名前を変える' }).click()
-  await page.getByLabel('競合A の新しい名前').fill('競合A（新社名）')
+  // 競合の名前とドメインを変える（ドメインは入力の形をそろえて保存される）
+  const competitors = page.getByRole('region', { name: '競合' })
+  await expect(competitors.getByText('ドメイン未設定')).toBeVisible()
+  await competitors.getByRole('button', { name: '編集' }).click()
+  await page.getByLabel('競合A の名前').fill('競合A（新社名）')
+  await page.getByLabel('競合A のドメイン').fill('https://www.competitor-a.example.com/')
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.getByText('競合A（新社名）')).toBeVisible()
-  await page.getByRole('button', { name: '削除' }).click()
+  await expect(competitors.getByText('競合A（新社名）')).toBeVisible()
+  await expect(competitors.getByText('competitor-a.example.com')).toBeVisible()
+  await page.reload()
+  await expect(competitors.getByText('competitor-a.example.com')).toBeVisible()
+
+  // ドメインを付けて競合を追加する
+  await page.getByLabel('追加する競合の名前').fill('競合B')
+  await page.getByLabel('追加する競合のドメイン（任意）').fill('b.example.com/')
+  await page.getByRole('button', { name: '競合を追加' }).click()
+  await expect(competitors.getByText('2 / 10 社')).toBeVisible()
+  await expect(competitors.getByText('b.example.com')).toBeVisible()
+
+  // 削除する
+  for (const name of ['競合A（新社名）', '競合B']) {
+    await competitors
+      .getByRole('listitem')
+      .filter({ hasText: name })
+      .getByRole('button', { name: '削除' })
+      .click()
+  }
   await expect(page.getByText('競合はまだ登録されていません。')).toBeVisible()
 
   // ブランドの設定

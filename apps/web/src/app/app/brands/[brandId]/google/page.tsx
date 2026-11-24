@@ -82,7 +82,10 @@ function DomainNotice(props: {
         <p>御社のサイトのドメインが設定されていないため、Google の検索順位を出せません。</p>
       )}
       {missing.length > 0 && (
-        <p>ドメインが設定されていない競合（{missing.join('、')}）は、検索順位を出せません。</p>
+        <p>
+          ドメインが設定されていない競合（{missing.join('、')}
+          ）は、検索順位を出せません。設定の「競合」で、各社の「編集」から入れられます。
+        </p>
       )}
       <p>
         <Link href={props.settingsHref} className="font-bold underline underline-offset-4">

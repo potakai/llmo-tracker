@@ -117,6 +117,27 @@ describe('GET /api/brands/:brandId/serp（Google との比較）', () => {
     expect(withoutSerp.serp).toBeNull()
   })
 
+  it('設定で競合のドメインを保存すると、次の検索結果からその競合の順位も照合される', async () => {
+    const { client, brand, keywordId } = await setupBrandWithSerp('serp-competitor-domain')
+    const competitorB = brand.competitors.find((c) => c.name === '競合B')!
+    // 今日の結果は保存済みなので、次の日の検索として保存する
+    const tomorrow = todayInTokyo(new Date(Date.now() + 24 * 60 * 60 * 1000))
+
+    // 1 位の hikaku.example を、競合B のサイトとして登録する（入力の形はそろえて保存される）
+    const patched = await client.request(
+      'PATCH',
+      `/api/brands/${brand.id}/competitors/${competitorB.id}`,
+      { domain: 'https://www.hikaku.example/' },
+    )
+    expect(patched.json.competitor.domain).toBe('hikaku.example')
+    await saveSerp(keywordId, 'fake', tomorrow)
+
+    const res = await client.get(`/api/brands/${brand.id}/serp`)
+    const row = res.json.rows.find((r: { promptId: string }) => r.promptId === keywordId)
+    expect(row.serp.searchedOn).toBe(tomorrow)
+    expect(row.serp.competitorRanks[competitorB.id]).toBe(1)
+  })
+
   it('他の組織のブランドは 404', async () => {
     const { brand } = await setupBrandWithSerp('serp-victim')
     const other = new TestClient()
