@@ -13,6 +13,11 @@ import { getLlmPolicy } from '@/lib/llm'
 import { inngest } from './client'
 import { createRunRequestedEvent, runRequested } from './events'
 import { recoverStaleSerpFunction, serpDailyFunction } from './serp'
+import {
+  executeSiteAuditFunction,
+  recoverStaleSiteAuditsFunction,
+  siteAuditWeeklyFunction,
+} from './site-audit'
 
 // ジョブの中身はすべて packages/runner にある。ここはそれを Inngest のステップに載せるだけ
 
@@ -114,4 +119,7 @@ export const functions = [
   recoverStaleRunsFunction,
   serpDailyFunction,
   recoverStaleSerpFunction,
+  executeSiteAuditFunction,
+  siteAuditWeeklyFunction,
+  recoverStaleSiteAuditsFunction,
 ]

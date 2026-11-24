@@ -12,3 +12,12 @@ export const runRequested = eventType('run/requested', {
  */
 export const createRunRequestedEvent = (runId: string) =>
   runRequested.create({ runId }, { id: `run-${runId}` })
+
+/** サイト診断を 1 つ動かしてほしい、というイベント。Web（今すぐ診断）と site-audit-weekly が送り、execute-site-audit が受け取る */
+export const siteAuditRequested = eventType('site-audit/requested', {
+  schema: z.object({ auditId: z.string() }),
+})
+
+/** site-audit/requested イベントを作る。ID は `site-audit-<auditId>`（同じ診断を二重に送っても 1 回しか動かない） */
+export const createSiteAuditRequestedEvent = (auditId: string) =>
+  siteAuditRequested.create({ auditId }, { id: `site-audit-${auditId}` })

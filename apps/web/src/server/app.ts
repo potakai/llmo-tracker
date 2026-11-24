@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { getLlmPolicy } from '@/lib/llm'
 import type { AppEnv } from './context'
 import { isDemoOrganization } from './demo'
+import { selectSiteAuditDispatcher } from './dispatch'
 import { errors, handleError } from './errors'
 import {
   blockDemoWrites,
@@ -15,6 +16,7 @@ import {
 import { brandRoutes } from './routes/brands'
 import { createRunRoutes } from './routes/runs'
 import { settingsRoutes } from './routes/settings'
+import { createSiteAuditRoutes } from './routes/site-audits'
 
 /** 外から差し替えるもの。本番・開発・テストで中身を変える */
 export type AppDeps = {
@@ -24,6 +26,11 @@ export type AppDeps = {
    * 本番では Inngest にイベントを送る（RUN_DISPATCH=inngest）
    */
   dispatchRun: (runId: string) => Promise<void> | void
+  /**
+   * サイト診断をジョブとして投げる。run と同じく、開発は同じプロセス、本番は Inngest（site-audit/requested）。
+   * 省略すると RUN_DISPATCH から決める
+   */
+  dispatchSiteAudit?: (auditId: string) => Promise<void> | void
   /**
    * 組織が本物の AI で計測しているか。省略すると LLM_MODE と LIVE_ORGANIZATION_IDS から決める
    * （createLlmPolicy と同じ判定）。テストで live の組織を作るときに差し替える
@@ -66,6 +73,7 @@ export function createApp(deps: AppDeps) {
     .route('/brands', brandRoutes)
     .route('/brands', settingsRoutes)
     .route('/brands', createRunRoutes(deps))
+    .route('/brands', createSiteAuditRoutes(deps.dispatchSiteAudit ?? selectSiteAuditDispatcher()))
 }
 
 /** フロントから hc<AppType>() で型付きで呼ぶための型 */

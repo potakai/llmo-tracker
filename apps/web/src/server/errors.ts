@@ -49,6 +49,24 @@ export const errors = {
       'PROMPT_LIMIT',
       `有効な質問は${max}個までです。使わない質問をアーカイブしてください`,
     ),
+  noDomain: () =>
+    new AppError(
+      400,
+      'NO_DOMAIN',
+      'サイトのドメインが登録されていません。ブランド情報でドメインを登録してください',
+    ),
+  siteAuditDailyLimit: () =>
+    new AppError(
+      429,
+      'SITE_AUDIT_DAILY_LIMIT',
+      '今すぐ診断は 1 日 1 回までです。明日またお試しください',
+    ),
+  siteAuditActive: () =>
+    new AppError(
+      409,
+      'SITE_AUDIT_ACTIVE',
+      'サイト診断はすでに動いています。終わるまで待ってください',
+    ),
   duplicate: (what: string) => new AppError(409, 'DUPLICATE', `同じ${what}がすでにあります`),
 }
 

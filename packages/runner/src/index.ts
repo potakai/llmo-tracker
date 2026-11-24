@@ -38,3 +38,4 @@ export {
   waitAndCollectSerpResults,
 } from './serp-tasks'
 export { isSameSite } from './site'
+export * from './site-audit'

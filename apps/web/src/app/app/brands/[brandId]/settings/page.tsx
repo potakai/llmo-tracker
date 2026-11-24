@@ -3,20 +3,30 @@ import { and, asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { loadBrandForPage } from '@/server/brand-page'
 import { perAnswerCosts } from '@/server/cost-estimate'
+import { getSiteAuditState } from '@/server/queries/site-audit'
 import { inOrganization } from '@/server/queries/tenant'
 import { MAX_ACTIVE_PROMPTS, MAX_COMPETITORS } from '@/server/schemas/brand'
 import { BrandInfoForm } from './brand-info-form'
 import { CompetitorsEditor } from './competitors-editor'
 import { PromptsEditor } from './prompts-editor'
+import { SiteAuditSection } from './site-audit-section'
 
 export default async function SettingsPage({ params }: { params: Promise<{ brandId: string }> }) {
   const { organizationId, brand, isDemo, llmMode } = await loadBrandForPage((await params).brandId)
   // 設定ではアーカイブした質問も見せる（元に戻せるように）
-  const prompts = await db
-    .select({ id: prompt.id, text: prompt.text, kind: prompt.kind, archivedAt: prompt.archivedAt })
-    .from(prompt)
-    .where(and(eq(prompt.brandId, brand.id), inOrganization(prompt.brandId, organizationId)))
-    .orderBy(asc(prompt.createdAt))
+  const [prompts, siteAuditState] = await Promise.all([
+    db
+      .select({
+        id: prompt.id,
+        text: prompt.text,
+        kind: prompt.kind,
+        archivedAt: prompt.archivedAt,
+      })
+      .from(prompt)
+      .where(and(eq(prompt.brandId, brand.id), inOrganization(prompt.brandId, organizationId)))
+      .orderBy(asc(prompt.createdAt)),
+    getSiteAuditState(organizationId, brand.id),
+  ])
 
   return (
     <div className="flex max-w-3xl flex-col gap-10">
@@ -31,6 +41,12 @@ export default async function SettingsPage({ params }: { params: Promise<{ brand
         readOnly={isDemo}
         max={MAX_COMPETITORS}
         competitors={brand.competitors.map((c) => ({ id: c.id, name: c.name }))}
+      />
+      <SiteAuditSection
+        brandId={brand.id}
+        domain={brand.domain}
+        isDemo={isDemo}
+        state={siteAuditState}
       />
       <BrandInfoForm
         readOnly={isDemo}

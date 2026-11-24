@@ -98,6 +98,8 @@ test.describe('デモアカウントでログイン済み', () => {
     await page.getByRole('link', { name: '設定' }).click()
     await expect(page.getByRole('button', { name: '質問を追加' })).toBeDisabled()
     await expect(page.getByRole('button', { name: '設定を保存' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '今すぐ診断' })).toBeDisabled()
+    await expect(page.getByText('デモアカウントでは診断できません')).toBeVisible()
 
     // ブランドの切り替えは見られるが、追加はできない
     await page.locator('summary', { hasText: 'ブランドを切り替える' }).click()
@@ -212,6 +214,34 @@ test.describe('デモアカウントでログイン済み', () => {
     await expect(table.getByText('の検索結果')).toHaveCount(2)
     // 質問文の質問は出さない
     await expect(table.getByText('中小企業向けのおすすめ会計ソフトは？')).toHaveCount(0)
+  })
+
+  test('「サイト診断」タブで、サイト全体の項目・前回からの変化・ページごとの結果が見られる', async ({
+    page,
+  }) => {
+    await page.goto('/app')
+    await page.getByRole('link', { name: 'サイト診断' }).click()
+    await expect(page).toHaveURL(/\/site$/)
+    await expect(page.getByRole('link', { name: 'サイト診断' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    // デモにはサンプルの案内は出さない
+    await expect(page.getByText(/この組織のサイト診断はサンプル/)).toHaveCount(0)
+
+    await expect(page.getByRole('heading', { name: 'サイト全体' })).toBeVisible()
+    await expect(page.getByText('AI のクローラーを止めていないか')).toBeVisible()
+    // デモのサイトは、先週は機能のページに説明がなく、今週はブログの構造化データが壊れた
+    await expect(page.getByRole('heading', { name: /からの変化/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '直った（1）' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '新しく出た（1）' })).toBeVisible()
+
+    const table = page.getByRole('table', { name: 'ページごとの診断' })
+    await expect(table.getByRole('link', { name: '/', exact: true })).toBeVisible()
+    await table.getByRole('link', { name: '/blog/cloud' }).click()
+    await expect(page.getByRole('heading', { name: '/blog/cloud' })).toBeVisible()
+    await expect(page.getByText('検索エンジンに載る設定か（noindex）')).toBeVisible()
+    await expect(page.getByText('要対応').first()).toBeVisible()
   })
 
   test('絞り込みは URL に残り、そのまま開き直しても同じ画面になる', async ({ page }) => {

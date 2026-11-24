@@ -1,8 +1,11 @@
 import { handle } from 'hono/vercel'
 import { createApp } from '@/server/app'
-import { selectDispatcher } from '@/server/dispatch'
+import { selectDispatcher, selectSiteAuditDispatcher } from '@/server/dispatch'
 
-const app = createApp({ dispatchRun: selectDispatcher() })
+const app = createApp({
+  dispatchRun: selectDispatcher(),
+  dispatchSiteAudit: selectSiteAuditDispatcher(),
+})
 
 // Hono のアプリを Next.js の Route Handler として動かす
 export const GET = handle(app)
