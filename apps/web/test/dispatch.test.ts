@@ -1,6 +1,11 @@
 import { Inngest } from 'inngest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { dispatchInProcess, selectDispatcher } from '@/server/dispatch'
+import {
+  dispatchInProcess,
+  dispatchSiteAuditInProcess,
+  selectDispatcher,
+  selectSiteAuditDispatcher,
+} from '@/server/dispatch'
 import { routeHandlerTarget, TestClient } from './helpers'
 
 /**
@@ -110,4 +115,31 @@ describe('投げ先の選び方', () => {
       ).not.toThrow()
     },
   )
+})
+
+describe('サイト診断の投げ先', () => {
+  it('RUN_DISPATCH が未設定なら、同じプロセスで動かす', () => {
+    expect(selectSiteAuditDispatcher({})).toBe(dispatchSiteAuditInProcess)
+  })
+
+  it('RUN_DISPATCH=inngest なら、site-audit/requested を id: site-audit-<auditId> で 1 件送る', async () => {
+    const sent: unknown[] = []
+    const client = { mode: 'cloud' as const, send: async (payload: unknown) => sent.push(payload) }
+    const dispatch = selectSiteAuditDispatcher(
+      { RUN_DISPATCH: 'inngest', INNGEST_EVENT_KEY: 'key' },
+      client as never,
+    )
+    await dispatch('audit-1')
+    expect(sent).toEqual([
+      expect.objectContaining({
+        name: 'site-audit/requested',
+        data: { auditId: 'audit-1' },
+        id: 'site-audit-audit-1',
+      }),
+    ])
+  })
+
+  it('RUN_DISPATCH が知らない値なら、run と同じく起動時に落とす', () => {
+    expect(() => selectSiteAuditDispatcher({ RUN_DISPATCH: 'trigger' })).toThrow('RUN_DISPATCH')
+  })
 })

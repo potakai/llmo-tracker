@@ -13,6 +13,7 @@
     "@llmo/db": "workspace:*",
     "@llmo/llm": "workspace:*",
     "@llmo/serp": "workspace:*",
+    "@llmo/site": "workspace:*",
     "drizzle-orm": "0.45.4",
     "p-limit": "7.3.3"
   },

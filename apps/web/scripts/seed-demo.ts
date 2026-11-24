@@ -1,10 +1,10 @@
 /**
- * デモ用のデータを作る：デモユーザー、組織、ブランド、30 日分の自動計測。
+ * デモ用のデータを作る：デモユーザー、組織、ブランド、30 日分の自動計測、Google の検索結果、サイト診断。
  *   pnpm db:seed
  * 何度実行しても、デモ組織のブランドを作り直すだけ（他のデータには触らない）。
  * 会社名とドメインはすべて架空（.example）。
  */
-import { brand, competitor, member, organization, prompt, run, user } from '@llmo/db'
+import { brand, competitor, member, organization, prompt, run, siteAudit, user } from '@llmo/db'
 import {
   type AnswerProvider,
   createRuleBasedExtractor,
@@ -17,9 +17,11 @@ import {
   collectSerpResults,
   createScheduledRun,
   executeRun,
+  executeSiteAudit,
   postSerpTasks,
 } from '@llmo/runner'
 import { createFakeSerpProvider } from '@llmo/serp'
+import { createFakeSiteFetcher } from '@llmo/site'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -225,6 +227,7 @@ async function main() {
     await db.delete(run).where(eq(run.brandId, keep.id))
     await db.delete(prompt).where(eq(prompt.brandId, keep.id))
     await db.delete(competitor).where(eq(competitor.brandId, keep.id))
+    await db.delete(siteAudit).where(eq(siteAudit.brandId, keep.id))
     ;[b] = (await db.update(brand).set(values).where(eq(brand.id, keep.id)).returning()) as [
       typeof brand.$inferSelect,
     ]
@@ -263,6 +266,9 @@ async function main() {
     today,
   )
 
+  // 6. サイト診断（フェイクのサイト）。前回と今回の 2 回分で、前回からの変化も見せる
+  await seedSiteAudits(b.id, values.domain, today)
+
   console.log(`\n完了。${DEMO_ACCOUNT.email} / ${DEMO_ACCOUNT.password} でログインできます`)
   process.exit(0)
 }
@@ -291,6 +297,42 @@ async function seedSerpResults(promptIds: string[], date: string) {
   const options = { budgetMs: Number.POSITIVE_INFINITY, promptIds }
   await postSerpTasks(deps, date, options)
   await collectSerpResults(deps, date, options)
+}
+
+/**
+ * サイト診断を 2 回分作る：7 日前（古い版のサイト。PerplexityBot を止めていた）と今日（今の版）。
+ * 診断はジョブと同じ関数で、フェイクのサイトを読む（本物のサイトは読まない）
+ */
+async function seedSiteAudits(brandId: string, domain: string, today: string) {
+  const audits: { date: string; revision: 0 | 1 }[] = [
+    { date: addDays(today, -7), revision: 0 },
+    { date: today, revision: 1 },
+  ]
+  for (const { date, revision } of audits) {
+    const [created] = await db
+      .insert(siteAudit)
+      .values({
+        brandId,
+        trigger: 'scheduled',
+        mode: 'fake',
+        requestedOn: date,
+        domain,
+        createdAt: new Date(`${date}T05:00:00+09:00`),
+      })
+      .returning({ id: siteAudit.id })
+    await executeSiteAudit(
+      {
+        db,
+        // デモ組織は本物のサイトを読まない
+        modeFor: () => 'fake',
+        fetcherFor: (mode, target) => {
+          if (mode !== 'fake') throw new Error('デモでは本物のサイトを読みません')
+          return createFakeSiteFetcher({ ...target, revision })
+        },
+      },
+      created!.id,
+    )
+  }
 }
 
 main().catch((error) => {

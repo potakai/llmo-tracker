@@ -1,10 +1,23 @@
 import { createFakeProvider, createRuleBasedExtractor } from '@llmo/llm'
-import { executeRun } from '@llmo/runner'
+import { executeRun, executeSiteAudit } from '@llmo/runner'
+import { createFakeSiteFetcher } from '@llmo/site'
 import { db } from '@/lib/db'
 import { createApp } from '@/server/app'
 
+/** テストではサイト診断をその場で動かして待つ（フェイクのサイトを読む） */
+export const runSiteAuditNow = (auditId: string) =>
+  executeSiteAudit(
+    {
+      db,
+      fetcherFor: (_mode, target) => createFakeSiteFetcher(target),
+      modeFor: () => 'fake',
+    },
+    auditId,
+  )
+
 /** テストでは run をその場で実行して待つ（フェイクの AI を使う） */
 export const app = createApp({
+  dispatchSiteAudit: runSiteAuditNow,
   dispatchRun: async (runId) => {
     await executeRun(
       {

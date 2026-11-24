@@ -50,6 +50,13 @@
       "when": 1795343964751,
       "tag": "0006_typical_franklin_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795523870944,
+      "tag": "0007_woozy_champions",
+      "breakpoints": true
     }
   ]
 }

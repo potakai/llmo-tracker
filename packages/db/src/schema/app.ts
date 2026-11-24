@@ -20,6 +20,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
@@ -72,11 +73,40 @@ export const serpModeEnum = pgEnum('serp_mode', ['live', 'fake'])
 /** pending = 検索を頼んで、結果を待っている（または頼む前） */
 export const serpStatusEnum = pgEnum('serp_status', ['pending', 'succeeded', 'failed'])
 
+/** サイト診断で、本物のサイトを読んだか（live）フェイクの HTML で作ったか（fake） */
+export const siteModeEnum = pgEnum('site_mode', ['live', 'fake'])
+export const siteAuditStatusEnum = pgEnum('site_audit_status', [
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+])
+/**
+ * 診断で読むページの状態。pending = まだ読んでいない、fetched = 読んで診断した、
+ * failed = 読めなかった（HTTP のエラーなど）、skipped = robots.txt でこのツールが止められていたので読まなかった
+ */
+export const siteAuditPageStatusEnum = pgEnum('site_audit_page_status', [
+  'pending',
+  'fetched',
+  'failed',
+  'skipped',
+])
+/** そのページを読んだ理由。top = トップページ、cited = AI の回答で引用された、sitemap / link = サイトマップ・トップページのリンク */
+export const siteAuditPageSourceEnum = pgEnum('site_audit_page_source', [
+  'top',
+  'cited',
+  'sitemap',
+  'link',
+])
+/** 診断の項目の結果。ok = 問題なし、warning = 注意、critical = 要対応 */
+export const checkStatusEnum = pgEnum('check_status', ['ok', 'warning', 'critical'])
+
 export const PROVIDERS = providerEnum.enumValues
 export type Provider = (typeof PROVIDERS)[number]
 export const PROMPT_KINDS = promptKindEnum.enumValues
 export type PromptKind = (typeof PROMPT_KINDS)[number]
 export type SerpMode = (typeof serpModeEnum.enumValues)[number]
+export type CheckStatus = (typeof checkStatusEnum.enumValues)[number]
 
 // ---------------------------------------------------------------------------
 // brand: 計測するブランド
@@ -423,6 +453,110 @@ export const serpAiOverviewReference = pgTable(
 )
 
 // ---------------------------------------------------------------------------
+// site_audit: サイト診断の 1 回分（ブランドに登録したドメインのサイトを読んで、AI に拾われやすい作りかを見る）
+// 自動（週 1 回）と手動（「今すぐ診断」。1 ブランド 1 日 1 回まで）。
+// ---------------------------------------------------------------------------
+
+export const siteAudit = pgTable(
+  'site_audit',
+  {
+    id: id(),
+    brandId: uuid()
+      .notNull()
+      .references(() => brand.id, { onDelete: 'cascade' }),
+    trigger: runTriggerEnum().notNull(),
+    mode: siteModeEnum().notNull(),
+    status: siteAuditStatusEnum().notNull().default('queued'),
+    /** 何日の診断か（日本時間の日付）。手動の「1 日 1 回まで」と、自動の二重作成の防止に使う */
+    requestedOn: date({ mode: 'string' }).notNull(),
+    /** 診断したドメイン（あとでブランドのドメインが変わっても、何を読んだかが分かるように残す） */
+    domain: text().notNull(),
+    /** サイト全体の材料（robots.txt・llms.txt・sitemap の有無）。ページの一覧を作ったときに入る */
+    siteFacts: jsonb(),
+    /** ページの一覧を作った時刻。入っていれば、やり直しのときに作り直さない */
+    plannedAt: timestamp({ withTimezone: true }),
+    startedAt: timestamp({ withTimezone: true }),
+    finishedAt: timestamp({ withTimezone: true }),
+    error: text(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('site_audit_brand_id_created_at_idx').on(t.brandId, t.createdAt),
+    // 手動は 1 日 1 回まで、自動は同じ日に 2 つ作らない
+    uniqueIndex('site_audit_brand_id_trigger_requested_on_uq').on(
+      t.brandId,
+      t.trigger,
+      t.requestedOn,
+    ),
+    // 1 ブランドで同時に動く診断は 1 つまで
+    uniqueIndex('site_audit_one_active_per_brand_uq')
+      .on(t.brandId)
+      .where(sql`${t.status} in ('queued', 'running')`),
+    check('site_audit_failed_has_error', sql`${t.status} <> 'failed' or ${t.error} is not null`),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// site_audit_page: 診断で読んだ（読もうとした）ページ
+// ---------------------------------------------------------------------------
+
+export const siteAuditPage = pgTable(
+  'site_audit_page',
+  {
+    id: id(),
+    auditId: uuid()
+      .notNull()
+      .references(() => siteAudit.id, { onDelete: 'cascade' }),
+    url: text().notNull(),
+    source: siteAuditPageSourceEnum().notNull(),
+    /** 読む順番（0 始まり。優先するページほど前） */
+    position: smallint().notNull(),
+    status: siteAuditPageStatusEnum().notNull().default('pending'),
+    httpStatus: smallint(),
+    /** リダイレクトのあとの URL */
+    finalUrl: text(),
+    /** HTML から取り出したもの（title・h1・JSON-LD の種類など。packages/site の PageFacts） */
+    facts: jsonb(),
+    /** 読めなかった理由（画面に出す文言） */
+    error: text(),
+    fetchedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('site_audit_page_audit_id_url_uq').on(t.auditId, t.url),
+    index('site_audit_page_audit_id_status_idx').on(t.auditId, t.status),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// site_audit_check: 診断の項目ごとの結果。page_id が null ならサイト全体の項目
+// ---------------------------------------------------------------------------
+
+export const siteAuditCheck = pgTable(
+  'site_audit_check',
+  {
+    id: id(),
+    auditId: uuid()
+      .notNull()
+      .references(() => siteAudit.id, { onDelete: 'cascade' }),
+    pageId: uuid().references(() => siteAuditPage.id, { onDelete: 'cascade' }),
+    /** 項目（packages/site の SITE_CHECK_KEYS / PAGE_CHECK_KEYS） */
+    key: text().notNull(),
+    status: checkStatusEnum().notNull(),
+    /** クライアント向けの説明 */
+    message: text().notNull(),
+    /** 説明の材料（止めているクローラーの名前など） */
+    detail: jsonb(),
+  },
+  (t) => [
+    // ページの保存がやり直されても、同じ項目が二重に入らない（サイト全体の項目は page_id が null）
+    unique('site_audit_check_audit_id_page_id_key_uq')
+      .on(t.auditId, t.pageId, t.key)
+      .nullsNotDistinct(),
+  ],
+)
+
+// ---------------------------------------------------------------------------
 // relations（db.query.* でネストして取るため）
 // ---------------------------------------------------------------------------
 
@@ -506,3 +640,6 @@ export type Analysis = typeof analysis.$inferSelect
 export type Mention = typeof mention.$inferSelect
 export type SerpResult = typeof serpResult.$inferSelect
 export type SerpEntity = typeof serpEntity.$inferSelect
+export type SiteAudit = typeof siteAudit.$inferSelect
+export type SiteAuditPage = typeof siteAuditPage.$inferSelect
+export type SiteAuditCheck = typeof siteAuditCheck.$inferSelect
