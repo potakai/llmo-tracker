@@ -1,5 +1,6 @@
-import type { Db } from '@llmo/db'
+import { brand as brandTable, type Db, siteAudit } from '@llmo/db'
 import type { SiteFetcher, SiteMode, SiteTarget } from '@llmo/site'
+import { and, eq, exists, type SQL, sql } from 'drizzle-orm'
 
 export type SiteAuditDeps = {
   db: Db
@@ -56,4 +57,19 @@ export function stopReasonOf(
   if (!isSameDomain(audit.domain, audit.currentDomain)) return DOMAIN_CHANGED_MESSAGE
   if (!isModeStillAllowed(deps, audit.mode, audit.organizationId)) return LIVE_NOT_ALLOWED_MESSAGE
   return null
+}
+
+/**
+ * SQL の条件：診断がまだ動いていて、ブランドのドメインが診断を作ったときと同じ。
+ * 一覧の保存・成功の確定を、確かめたのと同じ UPDATE の中で守る（確かめた直後に変わっても書かない）
+ */
+export function stillRunningOnSameDomain(auditId: string): SQL {
+  const tidy = (column: unknown) => sql`lower(rtrim(${column}, '.'))`
+  return and(
+    eq(siteAudit.id, auditId),
+    eq(siteAudit.status, 'running'),
+    exists(
+      sql`(select 1 from ${brandTable} where ${brandTable.id} = ${siteAudit.brandId} and ${tidy(brandTable.domain)} = ${tidy(siteAudit.domain)})`,
+    ),
+  ) as SQL
 }

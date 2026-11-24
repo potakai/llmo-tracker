@@ -1,11 +1,12 @@
 import { type Db, siteAudit, siteAuditCheck, siteAuditPage } from '@llmo/db'
 import { checkSite, siteOrigin } from '@llmo/site'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-
-export { abandonSiteAudit } from './abandon'
-
+import { abandonSiteAudit } from './abandon'
+import { DOMAIN_CHANGED_MESSAGE, stillRunningOnSameDomain } from './deps'
 import { DEFAULT_SITE_AUDIT_STALE_AFTER_MINUTES } from './limits'
 import { robotsStateOf, type SiteFacts } from './plan'
+
+export { abandonSiteAudit } from './abandon'
 
 /**
  * 診断の 3 段目：サイト全体の項目を診断して保存し、診断を終える。
@@ -32,7 +33,14 @@ export async function finishSiteAudit(db: Db, auditId: string): Promise<void> {
     hasFaqSomewhere: pages.some((p) => (p.facts as { faq?: unknown } | null)?.faq),
   })
 
-  await db.transaction(async (tx) => {
+  const finished = await db.transaction(async (tx) => {
+    // 動いていて、ドメインが変わっていないときだけ成功にする（同じ UPDATE で確かめる）
+    const [updated] = await tx
+      .update(siteAudit)
+      .set({ status: 'succeeded', finishedAt: sql`now()` })
+      .where(stillRunningOnSameDomain(auditId))
+      .returning({ id: siteAudit.id })
+    if (!updated) return false
     await tx
       .insert(siteAuditCheck)
       .values(
@@ -46,11 +54,10 @@ export async function finishSiteAudit(db: Db, auditId: string): Promise<void> {
         })),
       )
       .onConflictDoNothing()
-    await tx
-      .update(siteAudit)
-      .set({ status: 'succeeded', finishedAt: sql`now()` })
-      .where(and(eq(siteAudit.id, auditId), eq(siteAudit.status, 'running')))
+    return true
   })
+  // 成功にできなかったのは、ドメインが変わった・消えたとき（終わっていれば abandon は何もしない）
+  if (!finished) await abandonSiteAudit(db, auditId, DOMAIN_CHANGED_MESSAGE)
 }
 
 /**

@@ -10,8 +10,6 @@ import {
 } from '@llmo/db'
 import {
   createRobotsGuardedFetcher,
-  isAllowedByRobotsState,
-  OWN_CRAWLER_TOKEN,
   parseSitemap,
   type RobotsFetchResult,
   type RobotsState,
@@ -23,7 +21,13 @@ import {
 } from '@llmo/site'
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm'
 import { abandonSiteAudit } from './abandon'
-import { type SiteAuditDeps, SiteAuditNotFoundError, stopReasonOf } from './deps'
+import {
+  DOMAIN_CHANGED_MESSAGE,
+  type SiteAuditDeps,
+  SiteAuditNotFoundError,
+  stillRunningOnSameDomain,
+  stopReasonOf,
+} from './deps'
 import { CITED_LOOKBACK_DAYS, MAX_AUDIT_PAGES, MAX_SITEMAP_FILES } from './limits'
 import { checkRows, type PageOutcome, pageRowValues, readPage } from './read-page'
 
@@ -104,7 +108,12 @@ export async function prepareSiteAudit(
     hasLlmsTxt,
     hasSitemap: sitemap.found,
   }
-  await savePlan(db, auditId, { planned, facts, robots: robotsState, top: top?.outcome ?? null })
+  const saved = await savePlan(db, auditId, { planned, facts, top: top?.outcome ?? null })
+  if (!saved) {
+    // 読んでいる間に、ドメインが変わった・消えた（または診断が終えられた）
+    await abandonSiteAudit(db, auditId, DOMAIN_CHANGED_MESSAGE)
+    return { kind: 'finished' }
+  }
   return { kind: 'planned' }
 }
 
@@ -210,42 +219,36 @@ export function planPages(
 type Plan = {
   planned: PlannedPage[]
   facts: SiteFacts
-  robots: RobotsState
   /** 一覧を作るときに読んだトップページの結果（読んでいなければ null）。planned の先頭がトップページ */
   top: PageOutcome | null
 }
 
-async function savePlan(db: Db, auditId: string, plan: Plan) {
-  const skipReason =
-    plan.robots.kind === 'unreachable'
-      ? 'robots.txt を読めなかったため、読んでいません（robots.txt の決まりに合わせています）'
-      : 'robots.txt でこのツールが止められているため、読んでいません'
-  await db.transaction(async (tx) => {
+/**
+ * 一覧を保存する。robots.txt の判定はここではせず、読む直前（オリジンごと）の 1 か所にまとめる
+ * （登録元の robots.txt で、別のオリジンのページまで飛ばさないように）。
+ * 診断がまだ動いていて、ドメインが変わっていないときだけ保存する（保存したら true）
+ */
+async function savePlan(db: Db, auditId: string, plan: Plan): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(siteAudit)
+      .set({ siteFacts: plan.facts, plannedAt: sql`now()` })
+      .where(stillRunningOnSameDomain(auditId))
+      .returning({ id: siteAudit.id })
+    if (!updated) return false
     const rows = await tx
       .insert(siteAuditPage)
       .values(
-        plan.planned.map((page, position) => {
-          if (position === 0 && plan.top) {
-            return {
-              auditId,
-              url: page.url,
-              source: page.source,
-              position,
-              ...pageRowValues(plan.top),
-              fetchedAt: sql`now()`,
-            }
-          }
-          // このツールが robots.txt で止められているページは読まない（読むときにも確かめる）
-          const allowed = isAllowedByRobotsState(plan.robots, OWN_CRAWLER_TOKEN, page.url)
-          return {
-            auditId,
-            url: page.url,
-            source: page.source,
-            position,
-            status: allowed ? ('pending' as const) : ('skipped' as const),
-            error: allowed ? null : skipReason,
-          }
-        }),
+        plan.planned.map((page, position) => ({
+          auditId,
+          url: page.url,
+          source: page.source,
+          position,
+          // 一覧を作るときに読んだトップページは、その結果をそのまま入れる（2 回読まない）
+          ...(position === 0 && plan.top
+            ? { ...pageRowValues(plan.top), fetchedAt: sql`now()` }
+            : {}),
+        })),
       )
       .onConflictDoNothing()
       .returning({ id: siteAuditPage.id, position: siteAuditPage.position })
@@ -256,10 +259,7 @@ async function savePlan(db: Db, auditId: string, plan: Plan) {
         .values(checkRows(auditId, topRow.id, plan.top.checks))
         .onConflictDoNothing()
     }
-    await tx
-      .update(siteAudit)
-      .set({ siteFacts: plan.facts, plannedAt: sql`now()` })
-      .where(eq(siteAudit.id, auditId))
+    return true
   })
 }
 

@@ -166,3 +166,52 @@ describe('パスの照合の速さ', () => {
     expect(allowed(text, 'q', '/y')).toBe(true)
   })
 })
+
+describe('パーセントエンコードの扱い（RFC 9309 §2.2.2〜2.2.3）', () => {
+  it('ルールの %2A は「* という文字」で、ワイルドカードにしない', () => {
+    const text = 'User-agent: *\nDisallow: /a%2Ab'
+    expect(allowed(text, 'x', '/a*b')).toBe(false)
+    expect(allowed(text, 'x', '/a%2Ab')).toBe(false)
+    expect(allowed(text, 'x', '/axxb')).toBe(true)
+  })
+
+  it('%24 で書いた $ は URL の $ と一致し、URL の終わりの意味にはならない', () => {
+    const text = 'User-agent: *\nDisallow: /price%24'
+    expect(allowed(text, 'x', '/price$')).toBe(false)
+    expect(allowed(text, 'x', '/price$/more')).toBe(false)
+    expect(allowed(text, 'x', '/price')).toBe(true)
+  })
+
+  it('%2F と %2f は同じで、エンコードした / は、ふつうの / とは別のものとして比べる', () => {
+    const text = 'User-agent: *\nDisallow: /a%2fb'
+    expect(allowed(text, 'x', '/a%2Fb')).toBe(false)
+    expect(allowed(text, 'x', '/a/b')).toBe(true)
+  })
+
+  it('非予約文字のエンコード（%61 など）は、デコードしたものと同じとみなす', () => {
+    expect(allowed('User-agent: *\nDisallow: /%61bc', 'x', '/abc')).toBe(false)
+    expect(allowed('User-agent: *\nDisallow: /abc', 'x', '/%61bc')).toBe(false)
+  })
+
+  it('優先順位は、正規化したあとの長さで決まる', () => {
+    // Allow は書いた文字数は長いが、正規化すると /abc（4 文字）。Disallow の /abc/（5 文字）が勝つ
+    const text = 'User-agent: *\nAllow: /%61%62%63\nDisallow: /abc/'
+    expect(allowed(text, 'x', '/abc/x')).toBe(false)
+    // %24 の $ は 1 文字として数える：/x$（3 文字）が /x（2 文字）に勝つ
+    const dollar = 'User-agent: *\nDisallow: /x\nAllow: /x%24'
+    expect(allowed(dollar, 'x', '/x$')).toBe(true)
+  })
+})
+
+describe('大きな robots.txt', () => {
+  it('ルールと Sitemap: の行が数千行あっても、すぐに読み終わり、照合もすぐ終わる', () => {
+    const lines = ['User-agent: *']
+    for (let i = 0; i < 5000; i += 1) lines.push(`Disallow: /private-${i}/*.html$`)
+    for (let i = 0; i < 20_000; i += 1) lines.push(`Sitemap: https://example.com/s-${i}.xml`)
+    const started = performance.now()
+    const robots = parseRobotsTxt(lines.join('\n'))
+    for (let i = 0; i < 200; i += 1) isAllowedByRobots(robots, 'x', `${URL_BASE}/page-${i}`)
+    expect(robots.sitemaps).toHaveLength(20_000)
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+})

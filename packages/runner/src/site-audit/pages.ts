@@ -1,6 +1,6 @@
 import { brand as brandTable, type Db, siteAudit, siteAuditCheck, siteAuditPage } from '@llmo/db'
 import { createRobotsGuardedFetcher, siteOrigin } from '@llmo/site'
-import { and, asc, count, eq, sql } from 'drizzle-orm'
+import { and, asc, count, eq, exists, sql } from 'drizzle-orm'
 import { abandonSiteAudit } from './abandon'
 import { defaultSleep, type SiteAuditDeps, SiteAuditNotFoundError, stopReasonOf } from './deps'
 import { FAKE_PAGE_CONCURRENCY, LIVE_PAGE_CONCURRENCY, LIVE_REQUEST_INTERVAL_MS } from './limits'
@@ -29,13 +29,7 @@ export async function auditPagesSlice(
   const { db } = deps
   const startedAt = Date.now()
   const audit = await loadAuditForPages(db, auditId)
-  if (audit.status !== 'running') return { remaining: 0 }
-  // 読む直前に、今のブランドのドメインと、本物を読む許可を確かめる
-  const stop = stopReasonOf(deps, audit)
-  if (stop) {
-    await abandonSiteAudit(db, auditId, stop)
-    return { remaining: 0 }
-  }
+  if (!(await isStillRunning(deps, auditId, audit))) return { remaining: 0 }
 
   // すべてのリクエストの前に robots.txt を当てる。一覧を作ったときに読んだ robots.txt は読み直さない
   const facts = audit.siteFacts as SiteFacts | null
@@ -53,6 +47,8 @@ export async function auditPagesSlice(
     const pending = await pendingPages(db, auditId, concurrency)
     if (pending.length === 0) break
     if (batch > 0 && isLive) await sleep(LIVE_REQUEST_INTERVAL_MS)
+    // 新しく読み始める前（バッチごと）に、診断の状態と今のブランドのドメインを確かめ直す
+    if (batch > 0 && !(await isStillRunning(deps, auditId))) return { remaining: 0 }
     await Promise.all(
       pending.map(async (page) =>
         savePage(db, auditId, page.id, await auditPage(fetcher, page.url, names)),
@@ -60,6 +56,23 @@ export async function auditPagesSlice(
     )
   }
   return { remaining: await countPending(db, auditId) }
+}
+
+/**
+ * 診断がまだ動いていて、続けてよいか。今のブランドのドメインが変わった・消えた、本物を読む許可がなくなった
+ * なら、理由付きで診断を終えて false を返す
+ */
+async function isStillRunning(
+  deps: SiteAuditDeps,
+  auditId: string,
+  loaded?: Awaited<ReturnType<typeof loadAuditForPages>>,
+): Promise<boolean> {
+  const audit = loaded ?? (await loadAuditForPages(deps.db, auditId))
+  if (audit.status !== 'running') return false
+  const stop = stopReasonOf(deps, audit)
+  if (!stop) return true
+  await abandonSiteAudit(deps.db, auditId, stop)
+  return false
 }
 
 async function loadAuditForPages(db: Db, auditId: string) {
@@ -104,7 +117,19 @@ async function savePage(db: Db, auditId: string, pageId: string, outcome: PageOu
     const [updated] = await tx
       .update(siteAuditPage)
       .set({ ...pageRowValues(outcome), fetchedAt: sql`now()` })
-      .where(and(eq(siteAuditPage.id, pageId), eq(siteAuditPage.status, 'pending')))
+      .where(
+        and(
+          eq(siteAuditPage.id, pageId),
+          eq(siteAuditPage.status, 'pending'),
+          // 診断がまだ動いているときだけ保存する（終えたあとに結果を書き足さない）
+          exists(
+            tx
+              .select({ id: siteAudit.id })
+              .from(siteAudit)
+              .where(and(eq(siteAudit.id, auditId), eq(siteAudit.status, 'running'))),
+          ),
+        ),
+      )
       .returning({ id: siteAuditPage.id })
     if (!updated || outcome.checks.length === 0) return
     await tx

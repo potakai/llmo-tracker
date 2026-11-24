@@ -96,3 +96,14 @@ describe('すべてのリクエストの前に robots.txt を当てる', () => {
     expect(fetched).toEqual([`${ORIGIN}/a`])
   })
 })
+
+describe('解析した robots.txt の使い回し', () => {
+  it('ルールが数千行の robots.txt でも、オリジンごとに 1 回だけ解析して、たくさんのページをすぐ判定する', async () => {
+    const rules = Array.from({ length: 5000 }, (_, i) => `Disallow: /private-${i}/`).join('\n')
+    const { fetcher } = stub({ [`${ORIGIN}/robots.txt`]: { body: `User-agent: *\n${rules}` } })
+    const guarded = createRobotsGuardedFetcher(fetcher)
+    const started = performance.now()
+    for (let i = 0; i < 1000; i += 1) await reasonOf(guarded.fetch(`${ORIGIN}/page-${i}`))
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+})

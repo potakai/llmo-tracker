@@ -64,20 +64,24 @@ export function createRobotsGuardedFetcher(
   options: RobotsGuardOptions = {},
 ): RobotsGuardedFetcher {
   const token = options.token ?? OWN_CRAWLER_TOKEN
-  const cache = new Map<string, Promise<RobotsFetchResult>>(
-    (options.known ?? []).map(([origin, result]) => [origin, Promise.resolve(result)]),
+  // オリジンごとに、読んだ結果と、それを解析したものを 1 回だけ作って使い回す
+  type Entry = { result: RobotsFetchResult; state: RobotsState }
+  const entryOf = (result: RobotsFetchResult): Entry => ({ result, state: toRobotsState(result) })
+  const cache = new Map<string, Promise<Entry>>(
+    (options.known ?? []).map(([origin, result]) => [origin, Promise.resolve(entryOf(result))]),
   )
-  const robotsFor = (origin: string) => {
+  const entryFor = (origin: string) => {
     let pending = cache.get(origin)
     if (!pending) {
-      pending = readRobotsTxt(inner, origin)
+      pending = readRobotsTxt(inner, origin).then(entryOf)
       cache.set(origin, pending)
     }
     return pending
   }
+  const robotsFor = async (origin: string) => (await entryFor(origin)).result
   const gate = async (url: URL) => {
     if (url.pathname === '/robots.txt') return
-    const state = toRobotsState(await robotsFor(url.origin))
+    const { state } = await entryFor(url.origin)
     if (!isAllowedByRobotsState(state, token, url.href)) {
       throw new SiteFetchError('robots_disallowed', url.href)
     }

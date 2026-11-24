@@ -7,9 +7,12 @@
  * - `*` は任意の文字列、末尾の `$` は URL の終わり
  * - グループを終わらせるのは Allow / Disallow の行だけ。Sitemap: や知らない行は、グループを分けない（§2.2.4）
  * - 照合は正規表現を使わず、URL の長さに比例する時間で終える（長いパターンで固まらないように）
+ * - パーセントエンコード（§2.2.2〜2.2.3）：ルールの生の `*` と末尾の `$` を先に構文として取り分け、
+ *   残りの文字の部分と URL を、オクテット単位で同じ形に正規化してから比べる（normalizeOctets）
  */
 
-type Rule = { allow: boolean; pattern: string; matcher: PathMatcher }
+/** length は正規化したあとの長さ（`*` と `$` は 1 文字として数える）。優先順位に使う */
+type Rule = { allow: boolean; length: number; matcher: PathMatcher }
 type Group = { agents: string[]; rules: Rule[] }
 
 export type RobotsTxt = {
@@ -31,7 +34,7 @@ export type RobotsState =
 
 export function parseRobotsTxt(text: string): RobotsTxt {
   const groups: Group[] = []
-  const sitemaps: string[] = []
+  const sitemaps = new Set<string>()
   let current: Group | null = null
   // 直前の行が User-agent なら、同じグループに名前を足す
   let lastWasAgent = false
@@ -53,7 +56,7 @@ export function parseRobotsTxt(text: string): RobotsTxt {
       continue
     }
     if (key === 'sitemap') {
-      if (value && !sitemaps.includes(value)) sitemaps.push(value)
+      if (value) sitemaps.add(value)
       continue
     }
     if (key !== 'allow' && key !== 'disallow') continue
@@ -61,10 +64,9 @@ export function parseRobotsTxt(text: string): RobotsTxt {
     lastWasAgent = false
     // 空の Disallow（と空の Allow）はルールにしない
     if (!current || !value) continue
-    const pattern = normalizePath(value)
-    current.rules.push({ allow: key === 'allow', pattern, matcher: compilePattern(pattern) })
+    current.rules.push(compileRule(key === 'allow', value))
   }
-  return { groups, sitemaps }
+  return { groups, sitemaps: [...sitemaps] }
 }
 
 /** User-agent の値から名前の部分だけを取り、小文字にする（`GPTBot/1.0` → `gptbot`） */
@@ -72,13 +74,56 @@ function productToken(value: string): string {
   return (value.split(/[/\s]/)[0] ?? '').toLowerCase()
 }
 
-/** URL の path（と query）を、比べやすい形にそろえる（日本語などはパーセントエンコードする） */
-function normalizePath(path: string): string {
-  try {
-    return encodeURI(decodeURI(path))
-  } catch {
-    return path
+const UNRESERVED = /^[A-Za-z0-9\-._~]$/
+/** エンコードしてあってもしてなくても同じとみなす文字（§2.2.3 の表：%2A と *、%24 と $） */
+const SAME_WHEN_ENCODED = new Set(['*', '$'])
+const HEX = /^[0-9A-Fa-f]{2}$/
+const utf8 = new TextEncoder()
+
+const pct = (byte: number) => `%${byte.toString(16).toUpperCase().padStart(2, '0')}`
+
+/**
+ * URL の path・ルールの文字の部分を、オクテット単位で同じ形にそろえる。
+ * - %XX は、非予約文字と `*`・`$` ならデコードし、それ以外（予約文字・非 ASCII など）は大文字の %XX にする
+ *   （%2F と %2f は同じ。%2F と / は別）
+ * - そのままの非 ASCII 文字は UTF-8 のバイトごとに %XX にする。空白・制御文字・単独の % も %XX にする
+ */
+export function normalizeOctets(input: string): string {
+  let out = ''
+  for (let i = 0; i < input.length; ) {
+    const hex = input[i] === '%' ? input.slice(i + 1, i + 3) : ''
+    if (HEX.test(hex)) {
+      const byte = Number.parseInt(hex, 16)
+      const char = String.fromCharCode(byte)
+      out +=
+        byte < 0x80 && (UNRESERVED.test(char) || SAME_WHEN_ENCODED.has(char)) ? char : pct(byte)
+      i += 3
+      continue
+    }
+    const codePoint = input.codePointAt(i) ?? 0
+    const char = String.fromCodePoint(codePoint)
+    i += char.length
+    if (codePoint >= 0x80) {
+      for (const byte of utf8.encode(char)) out += pct(byte)
+    } else if (codePoint <= 0x20 || codePoint === 0x7f || char === '%') {
+      out += pct(codePoint)
+    } else {
+      out += char
+    }
   }
+  return out
+}
+
+/**
+ * ルールを作る。生の `*`（ワイルドカード）と末尾の `$`（URL の終わり）を先に取り分け、
+ * 残りの文字の部分だけを正規化する（%2A や %24 は、その文字そのものとして比べる）
+ */
+function compileRule(allow: boolean, value: string): Rule {
+  const anchored = value.endsWith('$')
+  const parts = (anchored ? value.slice(0, -1) : value).split('*').map(normalizeOctets)
+  const literal = parts.reduce((sum, part) => sum + part.length, 0)
+  const length = literal + (parts.length - 1) + (anchored ? 1 : 0)
+  return { allow, length, matcher: compilePattern(parts, anchored) }
 }
 
 /**
@@ -88,18 +133,17 @@ function normalizePath(path: string): string {
  */
 type PathMatcher = (path: string) => boolean
 
-function compilePattern(pattern: string): PathMatcher {
-  const anchored = pattern.endsWith('$')
-  const [first = '', ...rest] = (anchored ? pattern.slice(0, -1) : pattern).split('*')
+function compilePattern(parts: string[], anchored: boolean): PathMatcher {
+  const [first = '', ...rest] = parts
   // 最後の断片は、$ があれば URL の終わりに合わせる
-  const tail = anchored && rest.length > 0 ? (rest.pop() as string) : null
-  const middles = rest
+  const tail = anchored && rest.length > 0 ? (rest.at(-1) as string) : null
+  const middles = (tail === null ? rest : rest.slice(0, -1))
     .filter((part) => part !== '')
     .map((part) => ({ part, table: kmpTable(part) }))
 
   return (path) => {
     if (!path.startsWith(first)) return false
-    if (anchored && rest.length === 0 && tail === null) return path === first
+    if (anchored && rest.length === 0) return path === first
     let position = first.length
     for (const { part, table } of middles) {
       const found = kmpSearch(path, part, table, position)
@@ -134,12 +178,24 @@ function kmpSearch(text: string, needle: string, table: number[], from: number):
   return -1
 }
 
+/** クローラーの名前ごとに、当てはまるルールを覚えておく（同じ robots.txt で何度も判定するため） */
+const rulesCache = new WeakMap<RobotsTxt, Map<string, Rule[]>>()
+
 /** そのクローラーに当てはまるルール（名前の合うグループ → `*` のグループ → なし） */
 function rulesFor(robots: RobotsTxt, userAgent: string): Rule[] {
   const token = userAgent.toLowerCase()
+  let byToken = rulesCache.get(robots)
+  if (!byToken) {
+    byToken = new Map()
+    rulesCache.set(robots, byToken)
+  }
+  const cached = byToken.get(token)
+  if (cached) return cached
   const named = robots.groups.filter((g) => g.agents.includes(token))
   const groups = named.length > 0 ? named : robots.groups.filter((g) => g.agents.includes('*'))
-  return groups.flatMap((g) => g.rules)
+  const rules = groups.flatMap((g) => g.rules)
+  byToken.set(token, rules)
+  return rules
 }
 
 /** そのクローラーが、その URL（path と query）を読んでよいか */
@@ -150,8 +206,8 @@ export function isAllowedByRobots(robots: RobotsTxt, userAgent: string, url: str
   let best: Rule | null = null
   for (const rule of rulesFor(robots, userAgent)) {
     if (!rule.matcher(target)) continue
-    const longer = !best || rule.pattern.length > best.pattern.length
-    const tieAllow = best && rule.pattern.length === best.pattern.length && rule.allow
+    const longer = !best || rule.length > best.length
+    const tieAllow = best && rule.length === best.length && rule.allow
     if (longer || tieAllow) best = rule
   }
   return best ? best.allow : true
@@ -177,10 +233,7 @@ export function isSiteBlockedFor(state: RobotsState, userAgent: string, origin: 
 }
 
 function pathOf(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return normalizePath(`${parsed.pathname}${parsed.search}`)
-  } catch {
-    return normalizePath(url)
-  }
+  if (!URL.canParse(url)) return normalizeOctets(url)
+  const parsed = new URL(url)
+  return normalizeOctets(`${parsed.pathname}${parsed.search}`)
 }

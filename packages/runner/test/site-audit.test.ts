@@ -70,6 +70,30 @@ function stubFetcher(
   }
 }
 
+/** そのブランドの AI の回答で、自社サイトのページが引用されたことにする */
+async function citeOwnPage(brandId: string, promptId: string, url: string) {
+  const [r] = await db.insert(run).values({ brandId, trigger: 'manual' }).returning()
+  const [res] = await db
+    .insert(response)
+    .values({
+      runId: r!.id,
+      promptId,
+      provider: 'openai',
+      model: 'fake',
+      sampleIndex: 0,
+      status: 'succeeded',
+      answerText: 'x',
+    })
+    .returning()
+  await db.insert(citation).values({
+    responseId: res!.id,
+    url,
+    domain: new URL(url).hostname,
+    position: 0,
+    isOwnDomain: true,
+  })
+}
+
 async function newAudit(brandId: string, mode: SiteMode = 'fake', date = DATE) {
   return createManualSiteAudit(db, { brandId, domain: DOMAIN, mode, date })
 }
@@ -293,6 +317,77 @@ describe('サイト診断の実行', () => {
       status: 'failed',
       error: expect.stringContaining('ドメイン'),
     })
+  })
+
+  it('登録元の robots.txt が 503 でも、自分の robots.txt で許可しているサブドメインのページは読む', async () => {
+    const { brand, prompts } = await seedBrand()
+    const blog = `https://blog.${DOMAIN}`
+    await citeOwnPage(brand.id, prompts[0]!.id, `${blog}/a`)
+    const fetched: string[] = []
+    const fetcher = stubFetcher(
+      'fake',
+      {
+        [`https://${DOMAIN}/robots.txt`]: { status: 503 },
+        [`${blog}/robots.txt`]: { body: 'User-agent: *\nDisallow: /private/' },
+        [`${blog}/a`]: { body: '<title>ブログの記事です</title>' },
+      },
+      (url) => {
+        fetched.push(url)
+      },
+    )
+    const audit = await newAudit(brand.id)
+    await executeSiteAudit({ db, fetcherFor: () => fetcher, modeFor: allowLive }, audit.id)
+
+    const pages = await pagesOf(audit.id)
+    expect(pages.map((p) => [p.url, p.status])).toEqual([
+      [`https://${DOMAIN}/`, 'skipped'],
+      [`${blog}/a`, 'fetched'],
+    ])
+    expect(fetched).not.toContain(`https://${DOMAIN}/`)
+  })
+
+  it('ページを読んでいる途中でドメインが変わったら、その後の取得は始めず、診断は成功にしない', async () => {
+    const { brand } = await seedBrand()
+    const origin = `https://${DOMAIN}`
+    const paths = Array.from({ length: 6 }, (_, i) => `${origin}/p/${i}`)
+    const pageFetches: string[] = []
+    let changed = false
+    const fetcher = stubFetcher(
+      'live',
+      {
+        [`${origin}/robots.txt`]: { body: '' },
+        [`${origin}/sitemap.xml`]: {
+          body: `<urlset>${paths.map((u) => `<url><loc>${u}</loc></url>`).join('')}</urlset>`,
+        },
+        ...Object.fromEntries([`${origin}/`, ...paths].map((u) => [u, { body: '<p>x</p>' }])),
+      },
+      async (url) => {
+        if (/robots\.txt|llms\.txt|sitemap\.xml/.test(url)) return
+        pageFetches.push(url)
+        // 最初のページを読み始めたところで、設定でドメインが変えられた
+        if (!changed) {
+          changed = true
+          await db
+            .update(brandTable)
+            .set({ domain: 'other.example' })
+            .where(eq(brandTable.id, brand.id))
+        }
+      },
+    )
+    const audit = await newAudit(brand.id, 'live')
+    await executeSiteAudit(
+      { db, fetcherFor: () => fetcher, modeFor: allowLive, sleep: async () => {} },
+      audit.id,
+    )
+    // 同時に読むのは 2 ページまで。変わったあとのバッチは始まらない
+    expect(pageFetches.length).toBeLessThanOrEqual(2)
+    expect(await statusOf(audit.id)).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('ドメイン'),
+    })
+    // 失敗にしたあとに、ページの結果は保存しない
+    const fetchedAfter = (await pagesOf(audit.id)).filter((p) => p.status !== 'pending')
+    expect(fetchedAfter.length).toBeLessThanOrEqual(2)
   })
 
   it('サイトに届かない（名前解決ができない）ときは、理由付きで診断を失敗にする', async () => {
