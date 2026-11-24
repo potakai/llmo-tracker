@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { PROVIDER_LABEL, percent } from '@/components/labels'
 import { getSerpPolicy } from '@/lib/serp'
+import { competitorRankState, type RankState } from '@/lib/serp-rank'
 import { loadBrandForPage } from '@/server/brand-page'
 import { getSerpComparison, type SerpComparisonRow, type SerpRow } from '@/server/queries/serp'
 
@@ -82,7 +83,10 @@ function DomainNotice(props: {
         <p>御社のサイトのドメインが設定されていないため、Google の検索順位を出せません。</p>
       )}
       {missing.length > 0 && (
-        <p>ドメインが設定されていない競合（{missing.join('、')}）は、検索順位を出せません。</p>
+        <p>
+          ドメインが設定されていない競合（{missing.join('、')}
+          ）は、検索順位を出せません。設定の「競合」で、各社の「編集」から入れられます。
+        </p>
       )}
       <p>
         <Link href={props.settingsHref} className="font-bold underline underline-offset-4">
@@ -165,9 +169,9 @@ function SerpCells(props: { serp: SerpRow; competitors: Competitor[]; brandHasDo
   ]
   return (
     <>
-      <RankCell rank={props.brandHasDomain ? serp.brandRank : undefined} isOwn />
+      <RankCell state={brandRankState(props.brandHasDomain, serp.brandRank)} isOwn />
       {competitors.map((c) => (
-        <RankCell key={c.id} rank={c.domain ? (serp.competitorRanks[c.id] ?? null) : undefined} />
+        <RankCell key={c.id} state={competitorRankState(serp.competitorRanks, c)} />
       ))}
       <td className="px-4 py-2">
         {serp.aiOverviewPresent ? '出た' : '出なかった'}
@@ -188,17 +192,35 @@ function SerpCells(props: { serp: SerpRow; competitors: Competitor[]; brandHasDo
   )
 }
 
-/** 順位のセル。rank が undefined ならドメイン未設定、null なら上位 10 位に入っていない */
-function RankCell({ rank, isOwn = false }: { rank: number | null | undefined; isOwn?: boolean }) {
+/** 自社の順位の状態。自社の行は結果を保存するときに必ず作るので、未計測はない */
+function brandRankState(hasDomain: boolean, rank: number | null): RankState {
+  if (!hasDomain) return { kind: 'noDomain' }
+  return rank === null ? { kind: 'outOfRange' } : { kind: 'ranked', rank }
+}
+
+/** 順位のセル */
+function RankCell({ state, isOwn = false }: { state: RankState; isOwn?: boolean }) {
   return (
     <td className={`num px-4 py-2 text-right ${isOwn ? 'font-bold' : ''}`}>
-      {rank === undefined ? (
-        <span className="text-xs text-ink-soft">ドメイン未設定</span>
-      ) : rank === null ? (
-        <span className="text-ink-soft">圏外（11位以下）</span>
-      ) : (
-        `${rank}位`
-      )}
+      <RankText state={state} />
     </td>
   )
+}
+
+function RankText({ state }: { state: RankState }) {
+  switch (state.kind) {
+    case 'noDomain':
+      return <span className="text-xs text-ink-soft">ドメイン未設定</span>
+    case 'notMeasured':
+      return (
+        <span className="text-ink-soft">
+          未計測
+          <span className="block text-xs">次の検索から順位が出ます</span>
+        </span>
+      )
+    case 'outOfRange':
+      return <span className="text-ink-soft">圏外（11位以下）</span>
+    case 'ranked':
+      return `${state.rank}位`
+  }
 }

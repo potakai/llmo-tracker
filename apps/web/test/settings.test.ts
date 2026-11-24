@@ -71,6 +71,66 @@ describe('競合の編集', () => {
   })
 })
 
+describe('競合のドメイン', () => {
+  it('追加するときに https:// や末尾の / を付けて入れても、ホスト名だけにそろえて保存される', async () => {
+    const { client, brand } = await setup()
+
+    const res = await client.post(`/api/brands/${brand.id}/competitors`, {
+      name: '競合B',
+      domain: 'https://www.b.example.com/',
+    })
+
+    expect(res.status).toBe(201)
+    expect(res.json.competitor.domain).toBe('b.example.com')
+  })
+
+  it('あとから変えるときも同じ形にそろえ、null を送ると未設定に戻る', async () => {
+    const { client, brand } = await setup()
+    const id = brand.competitors[0].id
+    const url = `/api/brands/${brand.id}/competitors/${id}`
+
+    const set = await client.request('PATCH', url, { domain: 'https://example.com/' })
+    expect(set.status).toBe(200)
+    expect(set.json.competitor).toMatchObject({ name: '競合A', domain: 'example.com' })
+
+    const cleared = await client.request('PATCH', url, { domain: null })
+    expect(cleared.json.competitor.domain).toBeNull()
+  })
+
+  it('ドメインの形になっていない値は 400', async () => {
+    const { client, brand } = await setup()
+    const id = brand.competitors[0].id
+
+    const res = await client.request('PATCH', `/api/brands/${brand.id}/competitors/${id}`, {
+      domain: 'ドメインではない',
+    })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('他の組織の競合のドメインは変えられず 404 になる', async () => {
+    const a = await setup()
+    const b = await setup()
+    const otherId = b.brand.competitors[0].id
+
+    const viaOwnBrand = await a.client.request(
+      'PATCH',
+      `/api/brands/${a.brand.id}/competitors/${otherId}`,
+      { domain: 'evil.example' },
+    )
+    const viaOtherBrand = await a.client.request(
+      'PATCH',
+      `/api/brands/${b.brand.id}/competitors/${otherId}`,
+      { domain: 'evil.example' },
+    )
+
+    expect(viaOwnBrand.status).toBe(404)
+    expect(viaOtherBrand.status).toBe(404)
+    const detail = await b.client.get(`/api/brands/${b.brand.id}`)
+    expect(detail.json.brand.competitors[0].domain).toBeNull()
+  })
+})
+
 describe('質問の追加・アーカイブ・復元', () => {
   it('有効な質問は 10 個まで。アーカイブすると枠が空き、復元でまた埋まる', async () => {
     const { client, brand } = await setup()
@@ -139,6 +199,13 @@ describe('デモ組織は閲覧専用', () => {
         kind: 'keyword',
       }),
       client.post('/api/brands', { name: '別ブランド', prompts: ['質問'] }),
+      client.post(`/api/brands/${brand.id}/competitors`, {
+        name: '競合B',
+        domain: 'b.example.com',
+      }),
+      client.request('PATCH', `/api/brands/${brand.id}/competitors/${brand.competitors[0].id}`, {
+        domain: 'a.example.com',
+      }),
     ]
     for (const res of await Promise.all(attempts)) {
       expect(res.status).toBe(403)

@@ -117,6 +117,60 @@ describe('GET /api/brands/:brandId/serp（Google との比較）', () => {
     expect(withoutSerp.serp).toBeNull()
   })
 
+  it('設定で競合のドメインを保存すると、次の検索結果からその競合の順位も照合される', async () => {
+    const { client, brand, keywordId } = await setupBrandWithSerp('serp-competitor-domain')
+    const competitorB = brand.competitors.find((c) => c.name === '競合B')!
+    // 今日の結果は保存済みなので、次の日の検索として保存する
+    const tomorrow = todayInTokyo(new Date(Date.now() + 24 * 60 * 60 * 1000))
+
+    // 1 位の hikaku.example を、競合B のサイトとして登録する（入力の形はそろえて保存される）
+    const patched = await client.request(
+      'PATCH',
+      `/api/brands/${brand.id}/competitors/${competitorB.id}`,
+      { domain: 'https://www.hikaku.example/' },
+    )
+    expect(patched.json.competitor.domain).toBe('hikaku.example')
+    await saveSerp(keywordId, 'fake', tomorrow)
+
+    const res = await client.get(`/api/brands/${brand.id}/serp`)
+    const row = res.json.rows.find((r: { promptId: string }) => r.promptId === keywordId)
+    expect(row.serp.searchedOn).toBe(tomorrow)
+    expect(row.serp.competitorRanks[competitorB.id]).toBe(1)
+  })
+
+  it('設定済みの競合のドメインを別の順位のドメインに変えると、次の検索結果の順位が変わる', async () => {
+    const { client, brand, keywordId } = await setupBrandWithSerp('serp-domain-change')
+    const competitorA = brand.competitors.find((c) => c.name === '競合A')!
+    const tomorrow = todayInTokyo(new Date(Date.now() + 24 * 60 * 60 * 1000))
+    const rankOf = async () => {
+      const res = await client.get(`/api/brands/${brand.id}/serp`)
+      const row = res.json.rows.find((r: { promptId: string }) => r.promptId === keywordId)
+      return { searchedOn: row.serp.searchedOn, rank: row.serp.competitorRanks[competitorA.id] }
+    }
+    // 今日の結果では a.example の 5 位
+    expect(await rankOf()).toEqual({ searchedOn: todayInTokyo(), rank: 5 })
+
+    await client.request('PATCH', `/api/brands/${brand.id}/competitors/${competitorA.id}`, {
+      domain: 'hikaku.example',
+    })
+    await saveSerp(keywordId, 'fake', tomorrow)
+
+    expect(await rankOf()).toEqual({ searchedOn: tomorrow, rank: 1 })
+  })
+
+  it('結果を保存したあとに追加した競合は、保存済みの結果に順位のキーがない（画面では「未計測」）', async () => {
+    const { client, brand, keywordId } = await setupBrandWithSerp('serp-added-later')
+
+    const added = await client.post(`/api/brands/${brand.id}/competitors`, {
+      name: '競合C',
+      domain: 'c.example',
+    })
+    const res = await client.get(`/api/brands/${brand.id}/serp`)
+
+    const row = res.json.rows.find((r: { promptId: string }) => r.promptId === keywordId)
+    expect(Object.keys(row.serp.competitorRanks)).not.toContain(added.json.competitor.id)
+  })
+
   it('他の組織のブランドは 404', async () => {
     const { brand } = await setupBrandWithSerp('serp-victim')
     const other = new TestClient()

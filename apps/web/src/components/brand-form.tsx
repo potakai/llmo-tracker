@@ -126,6 +126,7 @@ export function BrandForm({
       <Field
         id="brand-competitors"
         label="競合（1行に1社、10社まで）"
+        hint="競合のサイトのドメインは、登録したあと「設定」で足せます。足すと Google の検索順位を競合でも比べられます"
         error={issueFor('competitors')}
       >
         <textarea
