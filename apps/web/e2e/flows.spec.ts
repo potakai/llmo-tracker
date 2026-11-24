@@ -300,6 +300,15 @@ test('設定で質問と競合を編集できる', async ({ page }) => {
   await page.reload()
   await expect(competitors.getByText('competitor-a.example.com')).toBeVisible()
 
+  // ドメインを空欄にして保存すると、未設定に戻り、再読み込みしてもそのまま
+  await competitors.getByRole('button', { name: '編集' }).click()
+  await page.getByLabel('競合A（新社名） のドメイン').fill('')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(competitors.getByText('ドメイン未設定')).toBeVisible()
+  await page.reload()
+  await expect(competitors.getByText('ドメイン未設定')).toBeVisible()
+  await expect(competitors.getByText('competitor-a.example.com')).toHaveCount(0)
+
   // ドメインを付けて競合を追加する
   await page.getByLabel('追加する競合の名前').fill('競合B')
   await page.getByLabel('追加する競合のドメイン（任意）').fill('b.example.com/')
