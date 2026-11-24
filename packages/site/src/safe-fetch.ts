@@ -77,6 +77,8 @@ export function createSafeFetcher(options: SafeFetcherOptions): SiteFetcher {
       let current = scoped(rawUrl)
       for (let hop = 0; ; hop += 1) {
         assertLiteralAddressAllowed(current, isAllowedAddress)
+        // リダイレクト先も、そのたびに確かめる（robots.txt など）
+        await fetchOptions.beforeRequest?.(current)
         const result = await fetchOnce(current, { lookup, signal, userAgent, ...limits })
         if (result.kind === 'done') return result.resource
         if (hop >= limits.maxRedirects) throw new SiteFetchError('too_many_redirects', current.href)

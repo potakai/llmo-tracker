@@ -5,51 +5,40 @@ import {
   response,
   run,
   siteAudit,
+  siteAuditCheck,
   siteAuditPage,
 } from '@llmo/db'
 import {
-  extractPageFacts,
+  createRobotsGuardedFetcher,
   isAllowedByRobotsState,
   OWN_CRAWLER_TOKEN,
-  parseRobotsTxt,
   parseSitemap,
+  type RobotsFetchResult,
   type RobotsState,
   SiteFetchError,
   type SiteFetcher,
   siteOrigin,
   toAuditableUrl,
+  toRobotsState,
 } from '@llmo/site'
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm'
 import { abandonSiteAudit } from './abandon'
-import {
-  isModeStillAllowed,
-  LIVE_NOT_ALLOWED_MESSAGE,
-  type SiteAuditDeps,
-  SiteAuditNotFoundError,
-} from './deps'
-import {
-  CITED_LOOKBACK_DAYS,
-  MAX_AUDIT_PAGES,
-  MAX_ROBOTS_TXT_CHARS,
-  MAX_SITEMAP_FILES,
-} from './limits'
+import { type SiteAuditDeps, SiteAuditNotFoundError, stopReasonOf } from './deps'
+import { CITED_LOOKBACK_DAYS, MAX_AUDIT_PAGES, MAX_SITEMAP_FILES } from './limits'
+import { checkRows, type PageOutcome, pageRowValues, readPage } from './read-page'
 
 /** サイト全体の材料（site_audit.site_facts に保存する） */
 export type SiteFacts = {
-  /** robots.txt の状態。found なら本文も残す（サイト全体の診断で読み直す） */
+  /** robots.txt の状態。found なら本文も残す（サイト全体の診断と、ページを読むときに読み直す） */
   robots:
-    | { kind: 'found'; text: string }
-    | { kind: 'missing' }
+    | Exclude<RobotsFetchResult, { kind: 'unreachable' }>
     | { kind: 'unreachable'; reason: string }
   hasLlmsTxt: boolean
   hasSitemap: boolean
 }
 
 export function robotsStateOf(facts: SiteFacts): RobotsState {
-  if (facts.robots.kind === 'found') {
-    return { kind: 'found', robots: parseRobotsTxt(facts.robots.text) }
-  }
-  return facts.robots
+  return toRobotsState(facts.robots)
 }
 
 type PageSource = 'top' | 'cited' | 'sitemap' | 'link'
@@ -72,8 +61,10 @@ export async function prepareSiteAudit(
   const { db } = deps
   const audit = await loadAudit(db, auditId)
   if (audit.status === 'succeeded' || audit.status === 'failed') return { kind: 'finished' }
-  if (!isModeStillAllowed(deps, audit.mode, audit.organizationId)) {
-    await abandonSiteAudit(db, auditId, LIVE_NOT_ALLOWED_MESSAGE)
+  // 読む直前に、今のブランドのドメインと、本物を読む許可を確かめる
+  const stop = stopReasonOf(deps, audit)
+  if (stop) {
+    await abandonSiteAudit(db, auditId, stop)
     return { kind: 'finished' }
   }
   await db
@@ -82,28 +73,38 @@ export async function prepareSiteAudit(
     .where(and(eq(siteAudit.id, auditId), eq(siteAudit.status, audit.status)))
   if (audit.plannedAt) return { kind: 'planned' }
 
-  const fetcher = deps.fetcherFor(audit.mode, {
-    registeredDomain: audit.domain,
-    brandName: audit.brandName,
-  })
+  // robots.txt 自体のほかは、どのリクエストの前にも robots.txt を当てる（llms.txt・sitemap・トップページも）
+  const fetcher = createRobotsGuardedFetcher(
+    deps.fetcherFor(audit.mode, { registeredDomain: audit.domain, brandName: audit.brandName }),
+  )
   const origin = siteOrigin(audit.domain)
-  // robots.txt が通信のエラーで読めないときは、サイト自体に届かないので、ここで診断を失敗にする（呼び出し側で）
-  const robots = await readRobots(fetcher, origin)
-  const robotsState = robotsStateOf({ robots, hasLlmsTxt: false, hasSitemap: false })
+  const robots = await fetcher.robotsFor(origin)
+  // robots.txt が通信のエラーで読めないときは、サイト自体に届かないので、診断を失敗にする
+  if (robots.kind === 'unreachable' && robots.error) {
+    await abandonSiteAudit(db, auditId, `サイトを読めませんでした。${robots.error.message}`)
+    return { kind: 'finished' }
+  }
+  const robotsState = toRobotsState(robots)
   const [hasLlmsTxt, sitemap] = await Promise.all([
     readLlmsTxt(fetcher, origin),
     readSitemaps(fetcher, audit.domain, origin, robotsState),
   ])
-  const links = sitemap.urls.length === 0 ? await readTopLinks(fetcher, origin) : []
+  // sitemap がなければトップページのリンクから探す。読んだトップページは、そのまま診断にも使う（2 回読まない）
+  const names = [audit.brandName, ...audit.aliases]
+  const top = sitemap.urls.length === 0 ? await readPage(fetcher, `${origin}/`, names) : null
   const cited = await citedOwnUrls(db, audit.brandId)
 
   const planned = planPages(audit.domain, origin, [
     ...cited.map((url) => ({ url, source: 'cited' as const })),
     ...sitemap.urls.map((url) => ({ url, source: 'sitemap' as const })),
-    ...links.map((url) => ({ url, source: 'link' as const })),
+    ...(top?.links ?? []).map((url) => ({ url, source: 'link' as const })),
   ])
-  const facts: SiteFacts = { robots, hasLlmsTxt, hasSitemap: sitemap.found }
-  await savePlan(db, auditId, planned, facts, robotsState)
+  const facts: SiteFacts = {
+    robots: robots.kind === 'unreachable' ? { kind: 'unreachable', reason: robots.reason } : robots,
+    hasLlmsTxt,
+    hasSitemap: sitemap.found,
+  }
+  await savePlan(db, auditId, { planned, facts, robots: robotsState, top: top?.outcome ?? null })
   return { kind: 'planned' }
 }
 
@@ -116,22 +117,15 @@ async function loadAudit(db: Db, auditId: string) {
       brandId: siteAudit.brandId,
       plannedAt: siteAudit.plannedAt,
       brandName: brandTable.name,
+      aliases: brandTable.aliases,
       organizationId: brandTable.organizationId,
+      currentDomain: brandTable.domain,
     })
     .from(siteAudit)
     .innerJoin(brandTable, eq(brandTable.id, siteAudit.brandId))
     .where(eq(siteAudit.id, auditId))
   if (!audit) throw new SiteAuditNotFoundError(auditId)
   return audit
-}
-
-async function readRobots(fetcher: SiteFetcher, origin: string): Promise<SiteFacts['robots']> {
-  const res = await fetcher.fetch(`${origin}/robots.txt`)
-  if (res.status >= 200 && res.status < 300) {
-    return { kind: 'found', text: res.body.slice(0, MAX_ROBOTS_TXT_CHARS) }
-  }
-  if (res.status >= 400 && res.status < 500) return { kind: 'missing' }
-  return { kind: 'unreachable', reason: `HTTP ${res.status}` }
 }
 
 /** llms.txt があるか。ないページでも 200 で HTML を返すサイトがあるので、HTML なら「ない」とみなす */
@@ -174,13 +168,6 @@ async function readSitemaps(
   return { found, urls }
 }
 
-/** sitemap がないときは、トップページのリンクからページを探す */
-async function readTopLinks(fetcher: SiteFetcher, origin: string): Promise<string[]> {
-  const res = await fetcher.fetch(`${origin}/`).catch(() => null)
-  if (!res || res.status < 200 || res.status >= 300) return []
-  return extractPageFacts(res.body, { url: res.url }).links
-}
-
 /** このブランドの AI の回答で引用された、自社サイトのページ（引用が多い順） */
 async function citedOwnUrls(db: Db, brandId: string): Promise<string[]> {
   const since = new Date(Date.now() - CITED_LOOKBACK_DAYS * 24 * 60 * 60 * 1000)
@@ -220,24 +207,36 @@ export function planPages(
   return planned
 }
 
-async function savePlan(
-  db: Db,
-  auditId: string,
-  planned: PlannedPage[],
-  facts: SiteFacts,
-  robots: RobotsState,
-) {
+type Plan = {
+  planned: PlannedPage[]
+  facts: SiteFacts
+  robots: RobotsState
+  /** 一覧を作るときに読んだトップページの結果（読んでいなければ null）。planned の先頭がトップページ */
+  top: PageOutcome | null
+}
+
+async function savePlan(db: Db, auditId: string, plan: Plan) {
+  const skipReason =
+    plan.robots.kind === 'unreachable'
+      ? 'robots.txt を読めなかったため、読んでいません（robots.txt の決まりに合わせています）'
+      : 'robots.txt でこのツールが止められているため、読んでいません'
   await db.transaction(async (tx) => {
-    await tx
+    const rows = await tx
       .insert(siteAuditPage)
       .values(
-        planned.map((page, position) => {
-          // このツールが robots.txt で止められているページは読まない
-          const allowed = isAllowedByRobotsState(robots, OWN_CRAWLER_TOKEN, page.url)
-          const skipReason =
-            robots.kind === 'unreachable'
-              ? 'robots.txt を読めなかったため、読んでいません（robots.txt の決まりに合わせています）'
-              : 'robots.txt でこのツールが止められているため、読んでいません'
+        plan.planned.map((page, position) => {
+          if (position === 0 && plan.top) {
+            return {
+              auditId,
+              url: page.url,
+              source: page.source,
+              position,
+              ...pageRowValues(plan.top),
+              fetchedAt: sql`now()`,
+            }
+          }
+          // このツールが robots.txt で止められているページは読まない（読むときにも確かめる）
+          const allowed = isAllowedByRobotsState(plan.robots, OWN_CRAWLER_TOKEN, page.url)
           return {
             auditId,
             url: page.url,
@@ -249,9 +248,17 @@ async function savePlan(
         }),
       )
       .onConflictDoNothing()
+      .returning({ id: siteAuditPage.id, position: siteAuditPage.position })
+    const topRow = rows.find((r) => r.position === 0)
+    if (plan.top && topRow && plan.top.checks.length > 0) {
+      await tx
+        .insert(siteAuditCheck)
+        .values(checkRows(auditId, topRow.id, plan.top.checks))
+        .onConflictDoNothing()
+    }
     await tx
       .update(siteAudit)
-      .set({ siteFacts: facts, plannedAt: sql`now()` })
+      .set({ siteFacts: plan.facts, plannedAt: sql`now()` })
       .where(eq(siteAudit.id, auditId))
   })
 }

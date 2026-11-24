@@ -12,8 +12,6 @@ export const LIVE_PAGE_CONCURRENCY = 2
 export const LIVE_REQUEST_INTERVAL_MS = 1_000
 /** フェイクのサイトは外に出ないので、まとめて読む */
 export const FAKE_PAGE_CONCURRENCY = 8
-/** robots.txt として読む大きさの上限（RFC 9309 では、少なくとも 500 KiB は読むこと） */
-export const MAX_ROBOTS_TXT_CHARS = 512 * 1024
 /**
  * 止まったとみなすまでの時間。50 ページを 2 ページずつ、1 秒あけて読む（1 ページ最長 10 秒）と最長でも 5 分ほど。
  * Inngest のリトライで遅れても、これだけあれば自分で終わる

@@ -120,3 +120,49 @@ describe('robots.txt を取りに行った結果ごとの扱い', () => {
     expect(isSiteBlockedFor(state, 'ClaudeBot', URL_BASE)).toBe(false)
   })
 })
+
+describe('robots.txt のグループの区切り（RFC 9309 §2.2.4）', () => {
+  it('User-agent の間に Sitemap: や知らない行があっても、同じグループのまま', () => {
+    const text = [
+      'User-agent: GPTBot',
+      'Sitemap: https://example.com/sitemap.xml',
+      'User-agent: CCBot',
+      'Crawl-delay: 10',
+      'User-agent: ClaudeBot',
+      'Disallow: /',
+    ].join('\n')
+    for (const agent of ['GPTBot', 'CCBot', 'ClaudeBot']) {
+      expect(allowed(text, agent, '/')).toBe(false)
+    }
+    expect(parseRobotsTxt(text).sitemaps).toEqual(['https://example.com/sitemap.xml'])
+  })
+
+  it('ルールのあとに Sitemap: があっても、そのあとのルールは同じグループに入る', () => {
+    const text =
+      'User-agent: GPTBot\nDisallow: /a\nSitemap: https://example.com/s.xml\nDisallow: /b'
+    expect(allowed(text, 'GPTBot', '/b')).toBe(false)
+  })
+})
+
+describe('パスの照合の速さ', () => {
+  it('* がたくさんある長いパターンと長い URL でも、すぐに終わる', () => {
+    const pattern = `/${'a*'.repeat(5000)}b`
+    const text = `User-agent: *\nDisallow: ${pattern}\nDisallow: /${'*a'.repeat(5000)}$`
+    const robots = parseRobotsTxt(text)
+    const url = `${URL_BASE}/${'a'.repeat(200_000)}`
+    const started = performance.now()
+    expect(isAllowedByRobots(robots, 'x', url)).toBe(false)
+    expect(isAllowedByRobots(robots, 'x', `${url}c`)).toBe(true)
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  it('* と $ の組み合わせを正しく照合する', () => {
+    const text = 'User-agent: *\nDisallow: /a*b*c$\nDisallow: /x*'
+    expect(allowed(text, 'q', '/a-b-c')).toBe(false)
+    expect(allowed(text, 'q', '/abcabc')).toBe(false)
+    expect(allowed(text, 'q', '/a-b-c-d')).toBe(true)
+    expect(allowed(text, 'q', '/acb')).toBe(true)
+    expect(allowed(text, 'q', '/x')).toBe(false)
+    expect(allowed(text, 'q', '/y')).toBe(true)
+  })
+})

@@ -11,6 +11,7 @@ import {
 import {
   createFakeSiteFetcher,
   type FetchedResource,
+  OWN_CRAWLER_TOKEN,
   SiteFetchError,
   type SiteFetcher,
   type SiteMode,
@@ -50,7 +51,9 @@ function stubFetcher(
 ): SiteFetcher {
   return {
     mode,
-    async fetch(url) {
+    async fetch(url, options) {
+      // 本物・フェイクと同じく、送る直前に beforeRequest を呼ぶ（robots.txt の判定）
+      await options?.beforeRequest?.(new URL(url))
       await onFetch?.(url)
       const page = pages[url]
       if (page instanceof SiteFetchError) throw page
@@ -191,10 +194,105 @@ describe('サイト診断の実行', () => {
 
     expect((await statusOf(audit.id))?.status).toBe('succeeded')
     expect((await pagesOf(audit.id)).every((p) => p.status === 'skipped')).toBe(true)
-    // robots.txt・llms.txt・sitemap.xml・トップページのリンク探し以外は読んでいない
-    expect(fetched.filter((u) => !/robots|llms|sitemap/.test(u))).toEqual([`https://${DOMAIN}/`])
+    // RFC 9309 どおり「すべて禁止」として、robots.txt のほかは llms.txt も sitemap も読まない
+    expect(fetched).toEqual([`https://${DOMAIN}/robots.txt`])
     const robots = (await siteChecksOf(audit.id)).find((c) => c.key === 'robots_txt')
     expect(robots?.status).toBe('critical')
+  })
+
+  it('robots.txt でこのツールが止められていたら、トップページ・sitemap・llms.txt も読まない', async () => {
+    const { brand } = await seedBrand()
+    const fetched: string[] = []
+    const origin = `https://${DOMAIN}`
+    const fetcher = stubFetcher(
+      'fake',
+      {
+        [`${origin}/robots.txt`]: {
+          body: `User-agent: ${OWN_CRAWLER_TOKEN}\nDisallow: /\nSitemap: ${origin}/sitemap.xml`,
+        },
+        [`${origin}/sitemap.xml`]: {
+          body: '<urlset><url><loc>https://maru.example.com/a</loc></url></urlset>',
+        },
+        [`${origin}/`]: { body: '<a href="/b">b</a>' },
+      },
+      (url) => {
+        fetched.push(url)
+      },
+    )
+    const audit = await newAudit(brand.id)
+    await executeSiteAudit({ db, fetcherFor: () => fetcher, modeFor: allowLive }, audit.id)
+    expect(fetched).toEqual([`${origin}/robots.txt`])
+    expect((await pagesOf(audit.id)).map((p) => p.status)).toEqual(['skipped'])
+  })
+
+  it('sitemap がなくても、トップページは 1 回だけ読み、HTML を読むのは 50 回まで', async () => {
+    const { brand } = await seedBrand()
+    const origin = `https://${DOMAIN}`
+    const links = Array.from({ length: 80 }, (_, i) => `<a href="/p/${i}">${i}</a>`).join('')
+    const pages: Record<string, Partial<FetchedResource>> = {
+      [`${origin}/robots.txt`]: { body: '' },
+      [`${origin}/`]: { body: `<title>トップ</title>${links}` },
+    }
+    for (let i = 0; i < 80; i += 1) pages[`${origin}/p/${i}`] = { body: '<p>x</p>' }
+    const fetched: string[] = []
+    const fetcher = stubFetcher('fake', pages, (url) => {
+      fetched.push(url)
+    })
+    const audit = await newAudit(brand.id)
+    await executeSiteAudit({ db, fetcherFor: () => fetcher, modeFor: allowLive }, audit.id)
+
+    const html = fetched.filter((u) => !/\/(robots\.txt|llms\.txt|sitemap\.xml)$/.test(u))
+    expect(html.filter((u) => u === `${origin}/`)).toHaveLength(1)
+    expect(html.length).toBeLessThanOrEqual(MAX_AUDIT_PAGES)
+    const [top] = await pagesOf(audit.id)
+    expect(top).toMatchObject({ url: `${origin}/`, status: 'fetched', httpStatus: 200 })
+    expect(top?.facts).toMatchObject({ title: 'トップ' })
+  })
+
+  it('診断を作ったあとにブランドのドメインが変わったら、古いドメインは読まずに理由付きで終える', async () => {
+    const { brand } = await seedBrand()
+    const fetched: string[] = []
+    const deps: SiteAuditDeps = {
+      db,
+      modeFor: allowLive,
+      fetcherFor: (_mode, target) => {
+        const fake = createFakeSiteFetcher(target)
+        return {
+          mode: fake.mode,
+          fetch: (url, options) => {
+            fetched.push(url)
+            return fake.fetch(url, options)
+          },
+        }
+      },
+    }
+    const audit = await newAudit(brand.id)
+    await prepareOrFail(deps, audit.id)
+    fetched.length = 0
+    await db.update(brandTable).set({ domain: 'other.example' }).where(eq(brandTable.id, brand.id))
+
+    expect((await auditPagesSlice(deps, audit.id, { budgetMs: 0 })).remaining).toBe(0)
+    expect(fetched).toEqual([])
+    expect(await statusOf(audit.id)).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('ドメイン'),
+    })
+  })
+
+  it('診断を作ったあとにブランドのドメインが消えたら、何も読まずに理由付きで終える', async () => {
+    const { brand } = await seedBrand()
+    const fetched: string[] = []
+    const fetcher = stubFetcher('fake', {}, (url) => {
+      fetched.push(url)
+    })
+    const audit = await newAudit(brand.id)
+    await db.update(brandTable).set({ domain: null }).where(eq(brandTable.id, brand.id))
+    await executeSiteAudit({ db, fetcherFor: () => fetcher, modeFor: allowLive }, audit.id)
+    expect(fetched).toEqual([])
+    expect(await statusOf(audit.id)).toMatchObject({
+      status: 'failed',
+      error: expect.stringContaining('ドメイン'),
+    })
   })
 
   it('サイトに届かない（名前解決ができない）ときは、理由付きで診断を失敗にする', async () => {

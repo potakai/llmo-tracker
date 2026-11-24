@@ -27,6 +27,19 @@ export function isSameSite(host: string, registeredDomain: string | null): boole
   return h === domain || h.endsWith(`.${domain}`)
 }
 
+/**
+ * ホストが、保存してあるドメインそのものか、そのサブドメインか（診断で読んでよい範囲）。
+ * isSameSite と違い、保存値から www. を取らない（www.example.com を登録したなら、example.com や
+ * shop.example.com は読まない）。大文字・小文字と末尾の . だけをそろえる
+ */
+export function isWithinDomain(host: string, registeredDomain: string): boolean {
+  const tidy = (value: string) => value.toLowerCase().replace(/\.$/, '')
+  const h = tidy(host)
+  const domain = tidy(registeredDomain)
+  if (!domain) return false
+  return h === domain || h.endsWith(`.${domain}`)
+}
+
 /** 読んでよいポート（ブランドのサイトは、ふつうの http / https のポートだけ。'' は省略したもの） */
 export const DEFAULT_PORTS: ReadonlySet<string> = new Set(['', '80', '443'])
 
@@ -40,7 +53,7 @@ export type AuditableUrlOptions = {
 /**
  * 診断で読んでよい URL か。読んでよければ、そろえた URL（# 以降を取る）を返す。
  * - http / https だけ。ユーザー名・パスワード付きの URL は読まない
- * - 登録したドメインとそのサブドメインだけ
+ * - 保存してあるドメインそのものと、そのサブドメインだけ（isWithinDomain）
  * - ふつうのポート（80 / 443）だけ
  */
 export function toAuditableUrl(
@@ -53,7 +66,7 @@ export function toAuditableUrl(
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
   if (url.username || url.password) return null
   if (!(options.ports ?? DEFAULT_PORTS).has(url.port)) return null
-  if (!isSameSite(url.hostname, registeredDomain)) return null
+  if (!isWithinDomain(url.hostname, registeredDomain)) return null
   return new URL(`${url.origin}${url.pathname}${url.search}`)
 }
 

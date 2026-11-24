@@ -1,24 +1,11 @@
 import { brand as brandTable, type Db, siteAudit, siteAuditCheck, siteAuditPage } from '@llmo/db'
-import {
-  type CheckResult,
-  checkPage,
-  extractPageFacts,
-  type FetchedResource,
-  fetchFailure,
-  httpStatusMessage,
-  SiteFetchError,
-  type SiteFetcher,
-} from '@llmo/site'
+import { createRobotsGuardedFetcher, siteOrigin } from '@llmo/site'
 import { and, asc, count, eq, sql } from 'drizzle-orm'
 import { abandonSiteAudit } from './abandon'
-import {
-  defaultSleep,
-  isModeStillAllowed,
-  LIVE_NOT_ALLOWED_MESSAGE,
-  type SiteAuditDeps,
-  SiteAuditNotFoundError,
-} from './deps'
+import { defaultSleep, type SiteAuditDeps, SiteAuditNotFoundError, stopReasonOf } from './deps'
 import { FAKE_PAGE_CONCURRENCY, LIVE_PAGE_CONCURRENCY, LIVE_REQUEST_INTERVAL_MS } from './limits'
+import type { SiteFacts } from './plan'
+import { auditPage, checkRows, type PageOutcome, pageRowValues } from './read-page'
 
 export type PagesSliceOptions = {
   /** この時間を過ぎたら、新しくページを読み始めない（読み途中のページは待つ） */
@@ -28,16 +15,6 @@ export type PagesSliceOptions = {
 export type PagesSliceResult = { remaining: number }
 
 type PendingPage = { id: string; url: string }
-
-/** 読んだ結果。ページの行の更新と、ページごとの項目 */
-type PageOutcome = {
-  status: 'fetched' | 'failed' | 'skipped'
-  httpStatus: number | null
-  finalUrl: string | null
-  facts: unknown
-  error: string | null
-  checks: CheckResult[]
-}
 
 /**
  * 診断の 2 段目：まだ読んでいないページを、予算の時間まで読んで診断する。
@@ -53,15 +30,19 @@ export async function auditPagesSlice(
   const startedAt = Date.now()
   const audit = await loadAuditForPages(db, auditId)
   if (audit.status !== 'running') return { remaining: 0 }
-  if (!isModeStillAllowed(deps, audit.mode, audit.organizationId)) {
-    await abandonSiteAudit(db, auditId, LIVE_NOT_ALLOWED_MESSAGE)
+  // 読む直前に、今のブランドのドメインと、本物を読む許可を確かめる
+  const stop = stopReasonOf(deps, audit)
+  if (stop) {
+    await abandonSiteAudit(db, auditId, stop)
     return { remaining: 0 }
   }
 
-  const fetcher = deps.fetcherFor(audit.mode, {
-    registeredDomain: audit.domain,
-    brandName: audit.brandName,
-  })
+  // すべてのリクエストの前に robots.txt を当てる。一覧を作ったときに読んだ robots.txt は読み直さない
+  const facts = audit.siteFacts as SiteFacts | null
+  const fetcher = createRobotsGuardedFetcher(
+    deps.fetcherFor(audit.mode, { registeredDomain: audit.domain, brandName: audit.brandName }),
+    { known: facts ? [[siteOrigin(audit.domain), facts.robots]] : [] },
+  )
   const isLive = fetcher.mode === 'live'
   const concurrency = isLive ? LIVE_PAGE_CONCURRENCY : FAKE_PAGE_CONCURRENCY
   const sleep = deps.sleep ?? defaultSleep
@@ -74,7 +55,7 @@ export async function auditPagesSlice(
     if (batch > 0 && isLive) await sleep(LIVE_REQUEST_INTERVAL_MS)
     await Promise.all(
       pending.map(async (page) =>
-        savePage(db, auditId, page, await auditPage(fetcher, page, names)),
+        savePage(db, auditId, page.id, await auditPage(fetcher, page.url, names)),
       ),
     )
   }
@@ -90,6 +71,8 @@ async function loadAuditForPages(db: Db, auditId: string) {
       brandName: brandTable.name,
       aliases: brandTable.aliases,
       organizationId: brandTable.organizationId,
+      currentDomain: brandTable.domain,
+      siteFacts: siteAudit.siteFacts,
     })
     .from(siteAudit)
     .innerJoin(brandTable, eq(brandTable.id, siteAudit.brandId))
@@ -115,84 +98,18 @@ async function countPending(db: Db, auditId: string): Promise<number> {
   return row?.n ?? 0
 }
 
-/** 1 ページを読んで診断する。読めなかったことも結果として返す（例外にしない） */
-export async function auditPage(
-  fetcher: SiteFetcher,
-  page: PendingPage,
-  names: string[],
-): Promise<PageOutcome> {
-  let res: FetchedResource
-  try {
-    res = await fetcher.fetch(page.url)
-  } catch (error) {
-    if (!(error instanceof SiteFetchError)) throw error
-    // PDF や画像は診断の対象外（問題ではない）
-    if (error.reason === 'unsupported_type') {
-      return { ...empty, status: 'skipped', error: error.message }
-    }
-    return {
-      ...empty,
-      status: 'failed',
-      error: error.message,
-      checks: [fetchFailure(error.message, { reason: error.reason })],
-    }
-  }
-  if (res.status < 200 || res.status >= 300) {
-    const message = httpStatusMessage(res.status)
-    return {
-      ...empty,
-      status: 'failed',
-      httpStatus: res.status,
-      finalUrl: res.url,
-      error: message,
-      checks: [fetchFailure(message, { httpStatus: res.status })],
-    }
-  }
-  const { links: _links, ...facts } = extractPageFacts(res.body, {
-    url: res.url,
-    names,
-    xRobotsTag: res.xRobotsTag,
-  })
-  return {
-    status: 'fetched',
-    httpStatus: res.status,
-    finalUrl: res.url,
-    facts,
-    error: null,
-    checks: checkPage({ url: res.url, facts: { ...facts, links: [] }, names }),
-  }
-}
-
-const empty = { httpStatus: null, finalUrl: null, facts: null, checks: [] }
-
 /** 読んだ結果を保存する。すでに保存されていれば（ジョブのやり直し）何もしない */
-async function savePage(db: Db, auditId: string, page: PendingPage, outcome: PageOutcome) {
+async function savePage(db: Db, auditId: string, pageId: string, outcome: PageOutcome) {
   await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(siteAuditPage)
-      .set({
-        status: outcome.status,
-        httpStatus: outcome.httpStatus,
-        finalUrl: outcome.finalUrl,
-        facts: outcome.facts,
-        error: outcome.error,
-        fetchedAt: sql`now()`,
-      })
-      .where(and(eq(siteAuditPage.id, page.id), eq(siteAuditPage.status, 'pending')))
+      .set({ ...pageRowValues(outcome), fetchedAt: sql`now()` })
+      .where(and(eq(siteAuditPage.id, pageId), eq(siteAuditPage.status, 'pending')))
       .returning({ id: siteAuditPage.id })
     if (!updated || outcome.checks.length === 0) return
     await tx
       .insert(siteAuditCheck)
-      .values(
-        outcome.checks.map((c) => ({
-          auditId,
-          pageId: page.id,
-          key: c.key,
-          status: c.status,
-          message: c.message,
-          detail: c.detail ?? null,
-        })),
-      )
+      .values(checkRows(auditId, pageId, outcome.checks))
       .onConflictDoNothing()
   })
 }

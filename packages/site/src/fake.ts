@@ -1,5 +1,5 @@
 import { toAuditableUrl } from './scope'
-import { type FetchedResource, SiteFetchError, type SiteFetcher } from './types'
+import { type FetchedResource, type FetchOptions, SiteFetchError, type SiteFetcher } from './types'
 
 export type FakeSiteOptions = {
   registeredDomain: string
@@ -43,10 +43,11 @@ export function createFakeSiteFetcher(options: FakeSiteOptions): SiteFetcher {
 
   return {
     mode: 'fake',
-    async fetch(rawUrl: string): Promise<FetchedResource> {
+    async fetch(rawUrl: string, fetchOptions?: FetchOptions): Promise<FetchedResource> {
       if (!URL.canParse(rawUrl)) throw new SiteFetchError('invalid_url', rawUrl)
       const url = toAuditableUrl(rawUrl, options.registeredDomain)
       if (!url) throw new SiteFetchError('outside_site', rawUrl)
+      await fetchOptions?.beforeRequest?.(url)
       const respond = (status: number, contentType: string | null, body: string) => ({
         url: url.href,
         status,

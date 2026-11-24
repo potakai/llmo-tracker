@@ -14,6 +14,11 @@ export type FetchedResource = {
 
 export type FetchOptions = {
   signal?: AbortSignal
+  /**
+   * リクエストを送る直前に、リダイレクトの 1 回ごとにも呼ぶ。例外を投げると、そのリクエストは送らない
+   * （robots.txt の判定に使う）
+   */
+  beforeRequest?: (url: URL) => Promise<void> | void
 }
 
 /** サイトを読むもの。本物とフェイクはこの形にそろえる。読める範囲は作るときに渡したドメインだけ */
@@ -37,6 +42,7 @@ export type SiteFetchErrorReason =
   | 'too_large'
   | 'unsupported_type'
   | 'network'
+  | 'robots_disallowed'
 
 const REASON_MESSAGES: Record<SiteFetchErrorReason, string> = {
   invalid_url: 'URL の形が正しくないため、読みませんでした',
@@ -49,6 +55,8 @@ const REASON_MESSAGES: Record<SiteFetchErrorReason, string> = {
   too_large: 'ページが大きすぎるため、読むのをやめました',
   unsupported_type: 'HTML やテキストではないため、読みませんでした',
   network: '通信のエラーで読めませんでした',
+  robots_disallowed:
+    'robots.txt でこのツールが止められている（または robots.txt を読めない）ため、読んでいません',
 }
 
 export class SiteFetchError extends Error {

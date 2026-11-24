@@ -35,13 +35,28 @@ export {
   type RobotsTxt,
 } from './robots'
 export {
+  createRobotsGuardedFetcher,
+  MAX_ROBOTS_TXT_CHARS,
+  type RobotsFetchResult,
+  type RobotsGuardedFetcher,
+  readRobotsTxt,
+  toRobotsState,
+} from './robots-gate'
+export {
   createSafeFetcher,
   guardedLookup,
   type Resolver,
   type SafeFetcherOptions,
   SITE_FETCH_LIMITS,
 } from './safe-fetch'
-export { hostOf, isSameSite, normalizeHost, siteOrigin, toAuditableUrl } from './scope'
+export {
+  hostOf,
+  isSameSite,
+  isWithinDomain,
+  normalizeHost,
+  siteOrigin,
+  toAuditableUrl,
+} from './scope'
 export { parseSitemap, type Sitemap } from './sitemap'
 export {
   type FetchedResource,

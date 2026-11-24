@@ -1,4 +1,4 @@
-import { organization, siteAudit } from '@llmo/db'
+import { organization, siteAudit, siteAuditCheck } from '@llmo/db'
 import { executeSiteAudit } from '@llmo/runner'
 import { createFakeSiteFetcher } from '@llmo/site'
 import { eq } from 'drizzle-orm'
@@ -66,6 +66,52 @@ describe('今すぐ診断', () => {
     // 他の組織の自分のブランドの ID を使っても、そのページは見えない
     expect(await getSiteAuditPageDetail(other.organizationId, other.brandId, pageId)).toBeNull()
     expect((await getSiteAuditOverview(other.organizationId, owner.brandId)).current).toBeNull()
+  })
+
+  it('ページの詳細の項目は、そのページの診断のもので、自分の組織のものだけを読む', async () => {
+    const owner = await setup('ivan')
+    await startAudit(owner.client, owner.brandId)
+    const other = await setup('judy')
+    await startAudit(other.client, other.brandId)
+    const ownerView = await getSiteAuditOverview(owner.organizationId, owner.brandId)
+    const otherView = await getSiteAuditOverview(other.organizationId, other.brandId)
+    const page = ownerView.pages[0]!
+    // 食い違った行：ページは自分のものだが、診断 ID は他の組織の診断を指している
+    await db.insert(siteAuditCheck).values({
+      auditId: otherView.current!.id,
+      pageId: page.id,
+      key: 'leaked',
+      status: 'critical',
+      message: '他の組織の項目',
+    })
+    const detail = await getSiteAuditPageDetail(owner.organizationId, owner.brandId, page.id)
+    expect(detail?.checks.map((c) => c.key)).not.toContain('leaked')
+    expect(detail?.checks.length).toBeGreaterThan(0)
+  })
+
+  it('同時に 2 回送ると、成功 1 件・429 1 件で、ジョブに渡すのは 1 回だけ', async () => {
+    const dispatched: string[] = []
+    const counting = createApp({
+      dispatchRun: () => {},
+      dispatchSiteAudit: (auditId) => {
+        dispatched.push(auditId)
+      },
+    })
+    const client = new TestClient(counting)
+    await client.signUp('kim')
+    await client.createOrganization('Kim Inc')
+    const { json } = await client.post('/api/brands', {
+      name: '◯◯会計',
+      domain: 'maru.example.com',
+      prompts: ['質問'],
+    })
+
+    const results = await Promise.all([
+      startAudit(client, json.brand.id),
+      startAudit(client, json.brand.id),
+    ])
+    expect(results.map((r) => r.status).sort()).toEqual([202, 429])
+    expect(dispatched).toHaveLength(1)
   })
 
   it('デモ組織では 403', async () => {

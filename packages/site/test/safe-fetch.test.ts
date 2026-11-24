@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net'
 import { gzipSync } from 'node:zlib'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { OWN_USER_AGENT } from '../src/ai-crawlers'
+import { createRobotsGuardedFetcher } from '../src/robots-gate'
 import { createSafeFetcher, type Resolver, type SafeFetcherOptions } from '../src/safe-fetch'
 import { SiteFetchError, type SiteFetchErrorReason } from '../src/types'
 
@@ -145,6 +146,15 @@ describe('SSRF の対策：読まないもの（IP の確認は本番と同じ�
     },
   )
 
+  it('保存してあるドメインが www. 付きなら、www. なしのホストは名前解決もしない', async () => {
+    const resolve = resolverOf({})
+    const reason = await reasonOf(
+      createSafeFetcher({ registeredDomain: `www.${DOMAIN}`, resolve }).fetch(`https://${DOMAIN}/`),
+    )
+    expect(reason).toBe('outside_site')
+    expect(resolve.calls).toHaveLength(0)
+  })
+
   it('URL として読めないものは読まない', async () => {
     const reason = await reasonOf(
       createSafeFetcher({ registeredDomain: DOMAIN }).fetch('not a url'),
@@ -217,6 +227,19 @@ describe('読み方（手元のサーバーを、ブランドのドメインと�
     )
     const reason = await reasonOf(fetcher().fetch(site('/to-internal')))
     expect(reason).toBe('blocked_address')
+  })
+
+  it('リダイレクト先も、そのたびに robots.txt で判定し直す（止められたページには届かない）', async () => {
+    routes.set('/robots.txt', (_req, res) =>
+      res.writeHead(200, { 'content-type': 'text/plain' }).end('User-agent: *\nDisallow: /secret'),
+    )
+    routes.set('/open', (_req, res) => res.writeHead(302, { location: '/secret' }).end())
+    routes.set('/secret', (_req, res) =>
+      res.writeHead(200, { 'content-type': 'text/html' }).end('x'),
+    )
+    const reason = await reasonOf(createRobotsGuardedFetcher(fetcher()).fetch(site('/open')))
+    expect(reason).toBe('robots_disallowed')
+    expect(hits.map((h) => h.path)).toEqual(['/robots.txt', '/open'])
   })
 
   it('リダイレクトが多すぎたら、読むのをやめる', async () => {

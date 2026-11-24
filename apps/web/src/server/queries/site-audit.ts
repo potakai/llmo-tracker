@@ -237,7 +237,14 @@ export async function getSiteAuditPageDetail(
       detail: siteAuditCheck.detail,
     })
     .from(siteAuditCheck)
-    .where(eq(siteAuditCheck.pageId, page.id))
+    .innerJoin(siteAudit, eq(siteAudit.id, siteAuditCheck.auditId))
+    .where(
+      and(
+        eq(siteAuditCheck.pageId, page.id),
+        eq(siteAuditCheck.auditId, page.auditId),
+        inOrganization(siteAudit.brandId, organizationId),
+      ),
+    )
     .orderBy(asc(siteAuditCheck.id))
   return { ...page, checks: bySeverity(checks) }
 }

@@ -5,9 +5,11 @@
  * - 名前の合うグループがなければ `*` のグループ、それもなければ全部読んでよい
  * - いちばん長く一致したルールが勝つ。同じ長さなら Allow が勝つ。空の Disallow は「何も止めない」
  * - `*` は任意の文字列、末尾の `$` は URL の終わり
+ * - グループを終わらせるのは Allow / Disallow の行だけ。Sitemap: や知らない行は、グループを分けない（§2.2.4）
+ * - 照合は正規表現を使わず、URL の長さに比例する時間で終える（長いパターンで固まらないように）
  */
 
-type Rule = { allow: boolean; pattern: string; regex: RegExp }
+type Rule = { allow: boolean; pattern: string; matcher: PathMatcher }
 type Group = { agents: string[]; rules: Rule[] }
 
 export type RobotsTxt = {
@@ -50,17 +52,17 @@ export function parseRobotsTxt(text: string): RobotsTxt {
       lastWasAgent = true
       continue
     }
-    lastWasAgent = false
     if (key === 'sitemap') {
       if (value && !sitemaps.includes(value)) sitemaps.push(value)
       continue
     }
-    if ((key === 'allow' || key === 'disallow') && current) {
-      // 空の Disallow（と空の Allow）はルールにしない
-      if (!value) continue
-      const pattern = normalizePath(value)
-      current.rules.push({ allow: key === 'allow', pattern, regex: patternToRegex(pattern) })
-    }
+    if (key !== 'allow' && key !== 'disallow') continue
+    // ルールの行で、User-agent の並びが終わる（次の User-agent は新しいグループ）
+    lastWasAgent = false
+    // 空の Disallow（と空の Allow）はルールにしない
+    if (!current || !value) continue
+    const pattern = normalizePath(value)
+    current.rules.push({ allow: key === 'allow', pattern, matcher: compilePattern(pattern) })
   }
   return { groups, sitemaps }
 }
@@ -79,14 +81,57 @@ function normalizePath(path: string): string {
   }
 }
 
-function patternToRegex(pattern: string): RegExp {
+/**
+ * パターンを照合するもの。`*` で区切った断片を、前から順に左端で見つけていく（`*` だけのワイルドカードは
+ * これで正しく判定できる）。断片の検索は KMP で、URL の各文字を 1 回ずつしか見ないので、
+ * 時間は URL とパターンの長さの和に比例する
+ */
+type PathMatcher = (path: string) => boolean
+
+function compilePattern(pattern: string): PathMatcher {
   const anchored = pattern.endsWith('$')
-  const body = anchored ? pattern.slice(0, -1) : pattern
-  const escaped = body
-    .split('*')
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-    .join('.*')
-  return new RegExp(`^${escaped}${anchored ? '$' : ''}`)
+  const [first = '', ...rest] = (anchored ? pattern.slice(0, -1) : pattern).split('*')
+  // 最後の断片は、$ があれば URL の終わりに合わせる
+  const tail = anchored && rest.length > 0 ? (rest.pop() as string) : null
+  const middles = rest
+    .filter((part) => part !== '')
+    .map((part) => ({ part, table: kmpTable(part) }))
+
+  return (path) => {
+    if (!path.startsWith(first)) return false
+    if (anchored && rest.length === 0 && tail === null) return path === first
+    let position = first.length
+    for (const { part, table } of middles) {
+      const found = kmpSearch(path, part, table, position)
+      if (found < 0) return false
+      position = found + part.length
+    }
+    if (tail === null) return true
+    return path.length - tail.length >= position && path.endsWith(tail)
+  }
+}
+
+/** KMP の失敗関数 */
+function kmpTable(needle: string): number[] {
+  const table = new Array<number>(needle.length).fill(0)
+  let k = 0
+  for (let i = 1; i < needle.length; i += 1) {
+    while (k > 0 && needle[i] !== needle[k]) k = table[k - 1] ?? 0
+    if (needle[i] === needle[k]) k += 1
+    table[i] = k
+  }
+  return table
+}
+
+/** from 以降で needle が最初に出る位置（なければ -1） */
+function kmpSearch(text: string, needle: string, table: number[], from: number): number {
+  let k = 0
+  for (let i = from; i < text.length; i += 1) {
+    while (k > 0 && text[i] !== needle[k]) k = table[k - 1] ?? 0
+    if (text[i] === needle[k]) k += 1
+    if (k === needle.length) return i - needle.length + 1
+  }
+  return -1
 }
 
 /** そのクローラーに当てはまるルール（名前の合うグループ → `*` のグループ → なし） */
@@ -104,7 +149,7 @@ export function isAllowedByRobots(robots: RobotsTxt, userAgent: string, url: str
   if (target === '/robots.txt') return true
   let best: Rule | null = null
   for (const rule of rulesFor(robots, userAgent)) {
-    if (!rule.regex.test(target)) continue
+    if (!rule.matcher(target)) continue
     const longer = !best || rule.pattern.length > best.pattern.length
     const tieAllow = best && rule.pattern.length === best.pattern.length && rule.allow
     if (longer || tieAllow) best = rule
